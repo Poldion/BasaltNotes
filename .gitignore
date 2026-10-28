@@ -1,0 +1,12 @@
+node_modules/
+dist/
+data/
+*.log
+.env
+.DS_Store
+coverage/
+server/test/.tmp*/
+
+# Interne Arbeitslisten und private Notizen – nicht im öffentlichen Repository
+VERBESSERUNGEN*.md
+*.local.md

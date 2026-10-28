@@ -1,0 +1,33 @@
+{
+  "name": "basaltnotes",
+  "private": true,
+  "version": "0.23.0",
+  "license": "MIT",
+  "description": "Self-hosted note-taking app in the spirit of Obsidian, with an optional AI curator that files new content for you",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Poldion/BasaltNotes.git"
+  },
+  "homepage": "https://github.com/Poldion/BasaltNotes#readme",
+  "bugs": {
+    "url": "https://github.com/Poldion/BasaltNotes/issues"
+  },
+  "workspaces": [
+    "server",
+    "web",
+    "packages/client",
+    "packages/plugin-sdk",
+    "plugins/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace server",
+    "dev:web": "npm run dev --workspace web",
+    "build": "npm run build --workspace server && npm run build --workspace web && npm run build --workspace packages/client && npm run build --workspace plugins/calendar",
+    "test": "npm test --workspace server",
+    "start": "npm start --workspace server",
+    "i18n:check": "node scripts/i18n-check.mjs"
+  },
+  "engines": {
+    "node": ">=22.13"
+  }
+}

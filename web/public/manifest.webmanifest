@@ -1,0 +1,11 @@
+{
+  "name": "BasaltNotes",
+  "short_name": "Basalt",
+  "description": "Notizen, Wiki-Links und KI-Kurator",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#16181c",
+  "theme_color": "#1c1f24",
+  "lang": "de",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

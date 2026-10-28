@@ -1,0 +1,54 @@
+# BasaltNotes für TrueNAS SCALE („Apps → Discover Apps → ⋮ → Install via YAML“) oder docker compose.
+#
+# Speicher:
+#   - basaltnotes-data (Docker-Volume, legt TrueNAS automatisch an): Einstellungen, Index, Benutzer,
+#     Tokens, Kurator-Protokoll
+#   - Vaults (direkt gemountet): normale Markdown-Ordner mit git-Verlauf – hier ./vaults neben dieser Datei,
+#     auf TrueNAS ein eigenes Dataset, z. B. /mnt/<Pool>/BasaltVaults
+#
+# Vorher anpassen: ADMIN_PASSWORD, Pfad der Vaults, ggf. LLM_URL.
+services:
+  basaltnotes:
+    image: poldion/basaltnotes:latest
+    container_name: basaltnotes
+    restart: unless-stopped
+    ports:
+      - "4400:8080"   # Host-Port 4400 → Container-Port 8080
+    environment:
+      TZ: Europe/Berlin
+      # Benutzer, unter dem die App läuft und dem die Dateien gehören (TrueNAS „apps“ = 568).
+      # Die Rechte von /data und der Vaults werden beim Start automatisch gesetzt.
+      PUID: "568"
+      PGID: "568"
+      # Nur beim ersten Start: Passwort für den Benutzer „admin“ (mind. 8 Zeichen).
+      # Ohne Angabe wird eines erzeugt und einmalig im App-Log ausgegeben.
+      ADMIN_PASSWORD: "bitte-aendern"
+      # KI-Funktionen beim ersten Start (danach: Einstellungen → Funktionen)
+      # FEATURE_CURATOR: "true"
+      # FEATURE_CHAT: "true"
+      # LLM für Kurator und Chat (Ollama oder Ollama-Proxy) – nur nötig, wenn die KI-Funktionen genutzt werden
+      # LLM_URL: "http://<ollama-host>:11434"
+      # LLM_MODEL: ""            # leer = aktuell geladenes Modell
+      # LLM_NUM_CTX: ""          # leer = automatisch (/api/ps, Proxy /admin/state, 4096)
+      # LLM_TIMEOUT_MS: "600000"       # max. Wartezeit aufs erste Token (Standard 10 min)
+      # LLM_IDLE_TIMEOUT_MS: "120000"  # max. Pause zwischen Tokens (Standard 2 min)
+      # Andere Apps, die per Browser (CORS) bzw. als iframe zugreifen dürfen, z. B. das DM-Panel
+      # CORS_ORIGINS: "https://panel.home"
+      # EMBED_ORIGINS: "https://panel.home"
+      # Anmeldung über Reverse-Proxy (Authelia/Authentik): Header mit Benutzername
+      # AUTH_HEADER: "Remote-User"
+    volumes:
+      # App-Daten (automatisch angelegtes Docker-Volume)
+      - basaltnotes-data:/data
+      # Vaults als normale Ordner (direkt gemountet). TrueNAS: Dataset-Pfad eintragen, z. B.
+      #   - /mnt/Storage/BasaltVaults:/data/vaults
+      - ./vaults:/data/vaults
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  basaltnotes-data:

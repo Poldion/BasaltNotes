@@ -1,0 +1,30 @@
+{
+  "name": "@basaltnotes/plugin-sdk",
+  "version": "0.23.0",
+  "description": "Types and build helper for BasaltNotes plugins (server and UI)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Poldion/BasaltNotes.git",
+    "directory": "packages/plugin-sdk"
+  },
+  "homepage": "https://github.com/Poldion/BasaltNotes/tree/main/packages/plugin-sdk#readme",
+  "bugs": {
+    "url": "https://github.com/Poldion/BasaltNotes/issues"
+  },
+  "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts"
+    },
+    "./web": {
+      "types": "./web.d.ts"
+    },
+    "./build": "./build.mjs"
+  },
+  "files": [
+    "index.d.ts",
+    "web.d.ts",
+    "build.mjs"
+  ],
+  "license": "MIT"
+}

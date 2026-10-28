@@ -1,0 +1,24 @@
+{
+  "name": "@basaltnotes/client",
+  "version": "0.23.0",
+  "description": "TypeScript client for the BasaltNotes API (browser and Node ≥ 18)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Poldion/BasaltNotes.git",
+    "directory": "packages/client"
+  },
+  "homepage": "https://github.com/Poldion/BasaltNotes/tree/main/packages/client#readme",
+  "bugs": {
+    "url": "https://github.com/Poldion/BasaltNotes/issues"
+  },
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "license": "MIT"
+}

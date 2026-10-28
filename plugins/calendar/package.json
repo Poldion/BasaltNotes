@@ -1,0 +1,16 @@
+{
+  "name": "@basaltnotes/plugin-calendar",
+  "version": "1.3.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "description": "Kalender & CalDAV für BasaltNotes (mitgeliefertes Plugin)",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@basaltnotes/plugin-sdk": "*",
+    "esbuild": "^0.28.2"
+  }
+}
