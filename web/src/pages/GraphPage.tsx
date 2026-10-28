@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation, type SimulationLinkDatum, type SimulationNodeDatum } from 'd3-force'
+import { forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation, forceX, forceY, type SimulationLinkDatum, type SimulationNodeDatum } from 'd3-force'
 import { api, enc, qs } from '../lib/api'
 import { useTypes } from '../lib/state'
 import { Spinner, typeColor } from '../lib/ui'
@@ -68,6 +68,7 @@ export function GraphPage({ embedded }: { embedded?: boolean } = {}) {
     const radius = (n: GNode) => 4 + Math.sqrt(n.degree) * 2.2
     // Wenige Notizen: mehr Abstand, damit sich die Beschriftungen nicht überlappen
     const spread = Math.max(1, Math.min(2.5, 40 / Math.max(nodes.length, 1)))
+    const large = nodes.length > 150
     ctx.font = '11px system-ui, sans-serif'
     const labelHalf = new Map(nodes.map((n) => [n.id, Math.min(70, ctx.measureText(n.title).width / 2)]))
     // Bis zur ersten eigenen Bewegung passt sich der Ausschnitt dem Graphen an
@@ -83,19 +84,34 @@ export function GraphPage({ embedded }: { embedded?: boolean } = {}) {
         y1 = Math.max(y1, n.y! + radius(n) + 16)
       }
       const pad = 40
-      const k = Math.min(1.6, Math.max(0.3, Math.min((w - pad * 2) / Math.max(x1 - x0, 1), (h - pad * 2) / Math.max(y1 - y0, 1))))
-      transform = { k, x: -((x0 + x1) / 2) * k, y: -((y0 + y1) / 2) * k }
+      const k = Math.min(1.6, Math.max(0.15, Math.min((w - pad * 2) / Math.max(x1 - x0, 1), (h - pad * 2) / Math.max(y1 - y0, 1))))
+      const target = { k, x: -((x0 + x1) / 2) * k, y: -((y0 + y1) / 2) * k }
+      // Weich nachführen statt springen – sonst zittert der Ausschnitt bei vielen Notizen mit jedem Schritt
+      const f = instant ? 1 : 0.12
+      transform = { k: transform.k + (target.k - transform.k) * f, x: transform.x + (target.x - transform.x) * f, y: transform.y + (target.y - transform.y) * f }
     }
+    let instant = true
 
     const sim = forceSimulation(nodes)
       .force('link', forceLink<GNode, SimulationLinkDatum<GNode>>(links).id((d) => d.id).distance(60 * spread).strength(0.4))
       .force('charge', forceManyBody().strength(-160 * spread))
       .force('center', forceCenter(0, 0))
-      .force('collide', forceCollide<GNode>().radius((d) => Math.max(radius(d) + 8, (labelHalf.get(d.id) ?? 0) * 0.8)))
-      .on('tick', () => {
-        fit()
-        draw()
-      })
+      .force('collide', forceCollide<GNode>().radius((d) => Math.max(radius(d) + 8, (labelHalf.get(d.id) ?? 0) * 0.8)).strength(large ? 0.5 : 1))
+      // Leichte Schwerkraft hält unverbundene Notizen beisammen
+      .force('x', forceX(0).strength(large ? 0.06 : 0.02))
+      .force('y', forceY(0).strength(large ? 0.06 : 0.02))
+      .velocityDecay(large ? 0.6 : 0.4)
+      .stop()
+    // Große Graphen vorab ordnen (höchstens ~300 ms), damit nicht hunderte Punkte sichtbar durcheinanderwirbeln
+    if (large) {
+      const t0 = performance.now()
+      while (sim.alpha() > 0.05 && performance.now() - t0 < 300) sim.tick()
+    }
+    sim.on('tick', () => {
+      fit()
+      draw()
+    })
+    sim.restart()
     function draw() {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       ctx.clearRect(0, 0, w, h)
@@ -111,7 +127,19 @@ export function GraphPage({ embedded }: { embedded?: boolean } = {}) {
         }
       }
       ctx.lineWidth = 1 / transform.k
-      for (const l of links) {
+      if (!hover) {
+        ctx.strokeStyle = border
+        ctx.globalAlpha = 0.8
+        ctx.beginPath()
+        for (const l of links) {
+          const s = l.source as GNode
+          const t = l.target as GNode
+          ctx.moveTo(s.x!, s.y!)
+          ctx.lineTo(t.x!, t.y!)
+        }
+        ctx.stroke()
+      }
+      for (const l of hover ? links : []) {
         const s = l.source as GNode
         const t = l.target as GNode
         const hl = hover && (s.id === hover.id || t.id === hover.id)
@@ -210,6 +238,7 @@ export function GraphPage({ embedded }: { embedded?: boolean } = {}) {
     const ro = new ResizeObserver(resize)
     ro.observe(wrap.current)
     resize()
+    instant = false
     return () => {
       sim.stop()
       ro.disconnect()

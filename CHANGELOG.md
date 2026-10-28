@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.23.1] – 2026-10-29
+
+### Fixed
+
+- The rate limit now applies to the API only. Pages and scripts of the web interface are never blocked, so the app no
+  longer shows a JSON error page instead of the interface.
+- Adding a large folder at once (e.g. hundreds of files) no longer floods the server: live updates are bundled and the
+  interface reloads once instead of once per file.
+- Graph view with many notes: from 150 notes the layout settles before it is shown, movements are damped more strongly,
+  unconnected notes drift gently to the centre and the view follows smoothly instead of jumping.
+
 ## [0.23.0] – 2026-10-28
 
 ### Added

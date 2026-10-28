@@ -148,14 +148,46 @@ const EVENT_NAMES = [
   'run.reverted',
 ]
 
+// Ereignisse kurz sammeln: Werden viele Dateien auf einmal geändert (z. B. ein Ordner in den Vault kopiert),
+// laden die Ansichten nicht für jede Notiz neu, sondern einmal je Ereignisart.
+const BURST_MS = 400
+const BURST_MAX_MS = 2000
+const BURST_LIMIT = 10
+const pending = new Map<string, { events: BasaltEvent[]; timer: ReturnType<typeof setTimeout>; first: number }>()
+
+function deliver(vault: string, events: BasaltEvent[]) {
+  let out = events
+  if (events.length > BURST_LIMIT) {
+    // Sammelereignis je Art, ohne note_id – Empfänger laden einfach neu
+    const byName = new Map<string, BasaltEvent>()
+    for (const e of events) {
+      const prev = byName.get(e.event)
+      byName.set(e.event, { ...e, data: { bulk: true, count: (prev?.data.count ?? 0) + 1 } })
+    }
+    out = [...byName.values()]
+  }
+  for (const e of out) for (const l of listeners.get(vault) ?? []) l(e)
+}
+
+function queue(vault: string, e: BasaltEvent) {
+  let p = pending.get(vault)
+  if (p) clearTimeout(p.timer)
+  else pending.set(vault, (p = { events: [], timer: 0 as any, first: Date.now() }))
+  p.events.push(e)
+  const flush = () => {
+    pending.delete(vault)
+    deliver(vault, p!.events)
+  }
+  p.timer = setTimeout(flush, Date.now() - p.first > BURST_MAX_MS ? 0 : BURST_MS)
+}
+
 function ensureSource(vault: string) {
   if (sources.has(vault)) return
   const es = new EventSource(withToken(`/api/v1/events?vault=${encodeURIComponent(vault)}`), { withCredentials: true })
   for (const name of EVENT_NAMES) {
     es.addEventListener(name, (msg) => {
       try {
-        const e = JSON.parse((msg as MessageEvent).data) as BasaltEvent
-        for (const l of listeners.get(vault) ?? []) l(e)
+        queue(vault, JSON.parse((msg as MessageEvent).data) as BasaltEvent)
       } catch {
         // ignorieren
       }

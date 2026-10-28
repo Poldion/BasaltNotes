@@ -1,7 +1,7 @@
 {
   "name": "basaltnotes",
   "private": true,
-  "version": "0.23.0",
+  "version": "0.23.1",
   "license": "MIT",
   "description": "Self-hosted note-taking app in the spirit of Obsidian, with an optional AI curator that files new content for you",
   "repository": {

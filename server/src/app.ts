@@ -106,6 +106,8 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
     global: true,
     max: Number(process.env.RATE_LIMIT_PER_MINUTE ?? 1200),
     timeWindow: '1 minute',
+    // Nur die API begrenzen – Seiten und Skripte der Oberfläche nie (sonst zeigt der Browser JSON statt der App)
+    allowList: (req) => !req.url.startsWith('/api/'),
     errorResponseBuilder: (_req, ctx) => {
       const e = new ApiError('rate_limited', `Zu viele Anfragen. Bitte in ${Math.ceil(ctx.ttl / 1000)} s erneut versuchen.`)
       return Object.assign(e, { statusCode: 429 })
