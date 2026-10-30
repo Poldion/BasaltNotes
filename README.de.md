@@ -144,4 +144,4 @@ Marke von Wizards of the Coast; BasaltNotes ist ein unabhängiges Projekt und mi
 
 Wenn dir das Projekt hilft, freue ich mich über Rückmeldungen, Fehlerberichte und Pull Requests – siehe
 [CONTRIBUTING.md](CONTRIBUTING.md).
-Ein Spenden-Link folgt. <!-- SPENDEN_LINK -->
+Du kannst mir auch [einen Kaffee ausgeben](https://buymeacoffee.com/poldion).
