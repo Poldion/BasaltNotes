@@ -4,16 +4,8 @@ import { api, enc, type NoteSummary } from '../lib/api'
 import { typeLabel, useApp, useTypes, useVaultEvents } from '../lib/state'
 import { Spinner, StatusChip, TypeDot, relTime, slugify } from '../lib/ui'
 import { DocumentUpload } from '../components/DocumentUpload'
+import { registry } from '../lib/plugins'
 import { tr } from '../lib/i18n'
-
-interface Campaign {
-  id: string | null
-  title: string
-  slug: string
-  status: string | null
-  system: string | null
-  players: any[]
-}
 
 export function VaultHome() {
   const { vault = '' } = useParams()
@@ -21,14 +13,14 @@ export function VaultHome() {
   const types = useTypes(vault)
   const info = vaults.find((v) => v.id === vault)
   const [recent, setRecent] = useState<NoteSummary[] | null>(null)
-  const [campaigns, setCampaigns] = useState<Campaign[]>([])
+  const [campaigns, setCampaigns] = useState<{ title: string }[]>([])
   const [inbox, setInbox] = useState<any[]>([])
 
   const load = useCallback(() => {
     api<{ items: NoteSummary[] }>(`/vaults/${enc(vault)}/notes?limit=15&sort=-updated&fields=title,type,path,updated,campaign`)
       .then((r) => setRecent(r.items))
       .catch(() => setRecent([]))
-    api<{ items: Campaign[] }>(`/vaults/${enc(vault)}/campaigns`)
+    api<{ items: { title: string }[] }>(`/vaults/${enc(vault)}/campaigns`)
       .then((r) => setCampaigns(r.items))
       .catch(() => setCampaigns([]))
     if (!isPlayer)
@@ -52,25 +44,9 @@ export function VaultHome() {
         {features.curator && info?.curator.enabled && <span className="chip accent">{tr('Kurator aktiv')}</span>}
       </div>
 
-      {campaigns.length > 0 && (
-        <section style={{ marginBottom: 24 }}>
-          <h2 style={{ fontSize: 16 }}>{tr('Kampagnen')}</h2>
-          <div className="grid-2">
-            {campaigns.map((c) => (
-              <Link key={c.title} to={`/${vault}/campaign/${c.slug || slugify(c.title)}`} className="card" style={{ color: 'inherit', textDecoration: 'none' }}>
-                <div className="card-title">
-                  <TypeDot type="campaign" /> {c.title}
-                </div>
-                <div className="row small muted">
-                  {c.system && <span className="chip">{c.system}</span>}
-                  {c.status && <span className="chip accent">{tr(c.status)}</span>}
-                  {c.players?.length > 0 && <span>{tr('{length} Spielende', { length: c.players.length })}</span>}
-                </div>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
+      {registry.home.map((h) => (
+        <h.component key={`${h.plugin}:${h.id}`} vault={vault} />
+      ))}
 
       <div className="grid-2">
         <section className="card">

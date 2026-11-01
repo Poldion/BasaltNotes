@@ -24,18 +24,18 @@ und Quests an, ergänzt bestehende und lernt Schreibvarianten („Cydia“ → Z
 
 | Bereich | Was es kann |
 |---|---|
-| **Notizen** | Markdown + YAML-Frontmatter, stabile IDs, Typen mit Ordnern, Vorlagen und Eigenschaften – für D&D (Kampagne, Session, NPC, Ort, Quest …) und den Alltag (Tagebuch, Aufgabe, Rezept …), plus eigene Typen |
+| **Notizen** | Markdown + YAML-Frontmatter, stabile IDs, Typen mit Ordnern, Vorlagen und Eigenschaften – vom freien Notizbuch bis zum Alltag (Tagebuch, Aufgabe, Rezept …) |
 | **Editor** | CodeMirror 6 mit Live-Vorschau, `[[`-Autovervollständigung inkl. Aliasse, Bilder einfügen, Autosave, Konflikterkennung |
-| **Vaults** | Frei (nur Notizen, Ordner nach Wahl – wie Obsidian) oder mit Vorlage für D&D bzw. den Alltag; Beispiel-Vault mit erfundener Kampagne zum Ausprobieren |
+| **Vaults** | Frei (nur Notizen, Ordner nach Wahl – wie Obsidian) oder mit Vorlage; Plugins bringen weitere Vorlagen mit |
 | **Verknüpfung** | Backlinks mit Kontext, Umbenennen passt alle Links an, Graph-Ansicht, „Erwähnungen verknüpfen“ ohne KI |
-| **Suche** | Volltext (SQLite FTS5), Filter nach Typ, Kampagne, Tag und Eigenschaft, Schnellöffner, Dataview-ähnliche Abfragen |
+| **Suche** | Volltext (SQLite FTS5), Filter nach Typ, Tag und Eigenschaft, Schnellöffner, Dataview-ähnliche Abfragen |
 | **KI-Kurator** | Erkennen → Abgleichen → Planen → Anwenden oder Vorschlagen (mit Diff), Regeln je Vault, Trockenlauf, „Lauf rückgängig“ |
 | **Fragen** | Chat mit den Notizen; passende Einträge werden ohne LLM vorausgewählt – gebaut für kleine lokale Modelle |
 | **Dokumente** | PDF, Word, Text und Markdown in den Eingang hochladen; Text wird ausgelesen und einsortiert |
-| **Kampagnen** | Startseite mit „Was bisher geschah“, Timeline, offenen Quests, Charakteren, Spieler-Sicht |
+| **D&D** (Plugin) | Kampagnen mit Startseite und Timeline, Spieler-Sicht und Spieler-Konten, eigene Kurator-Regeln, Vorlage und Beispiel-Vault – mitgeliefert, nur bei Bedarf eingeschaltet |
 | **Verlauf** | git-Commit pro Speichern, Diff und Wiederherstellen je Notiz, Papierkorb, ZIP-Export |
-| **Plugins** | Erweiterungen mit Server- und Oberflächen-Teil; Kalender & CalDAV (auch für Home Assistant) ist mitgeliefert |
-| **Benutzer** | Rollen (Admin, Bearbeiten, Lesen, Spieler), Vault-Zugriff je Konto, API-Tokens mit Freigaben je Vault |
+| **Plugins** | Erweiterungen mit Server- und Oberflächen-Teil; installieren und aktualisieren aus dem Katalog oder eigenen GitHub-Repos; Kalender & CalDAV (auch für Home Assistant) ist mitgeliefert |
+| **Benutzer** | Admin oder Mitglied mit Rechte-Stufe je Vault, API-Tokens mit Freigaben je Vault |
 | **Einbindung** | REST-API mit OpenAPI, Server-Sent Events, signierte Webhooks, iframe-Einbettungen, JS-SDK |
 | **Oberfläche** | Deutsch und Englisch, Hell/Dunkel, bis Handybreite, als PWA installierbar |
 

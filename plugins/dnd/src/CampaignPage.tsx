@@ -1,10 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type MouseEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { api, enc, qs } from '../lib/api'
-import { typeLabel, useApp, useTypes, useVaultEvents } from '../lib/state'
-import { Modal, Spinner, TypeDot, fmtDate, relTime } from '../lib/ui'
-import { embedNavigate } from './NotePage'
-import { tr } from '../lib/i18n'
+import { Modal, Spinner, TypeDot, api, embedNavigate, enc, fmtDate, qs, relTime, tr, useApp, useTypes, useVaultEvents } from '@basaltnotes/plugin-sdk/web'
 
 interface Overview {
   campaign: { id: string | null; title: string; slug: string; status: string | null; system: string | null; players: any[]; dm: string | null }
@@ -18,7 +14,8 @@ interface Overview {
   open_proposals: number
 }
 
-export function CampaignPage({ embedded }: { embedded?: boolean } = {}) {
+export function CampaignPage() {
+  const embedded = location.pathname.startsWith('/embed/')
   const { vault = '', campaign = '' } = useParams()
   const types = useTypes(vault)
   const { isAdmin, embed, features } = useApp()
@@ -47,7 +44,7 @@ export function CampaignPage({ embedded }: { embedded?: boolean } = {}) {
   })
 
   const link = (id: string) => (embedded ? `/embed/${vault}/note/${enc(id)}${location.search}` : `/${vault}/note/${enc(id)}`)
-  const onLink = (e: React.MouseEvent, id: string, title: string, type: string) => {
+  const onLink = (e: MouseEvent, id: string, title: string, type: string) => {
     if (embedNavigate(id, title, type)) e.preventDefault()
   }
 
@@ -120,7 +117,7 @@ export function CampaignPage({ embedded }: { embedded?: boolean } = {}) {
           .map(([t, n]) => (
             <Link key={t} className="stat" style={{ color: 'inherit', textDecoration: 'none' }} to={embedded ? '#' : `/${vault}/search?type=${t}&campaign=${enc(o.campaign.title)}`}>
               <b>{n}</b>
-              <span>{typeLabel(types, t)}</span>
+              <span>{types.find((x) => x.name === t)?.label ?? t}</span>
             </Link>
           ))}
       </div>

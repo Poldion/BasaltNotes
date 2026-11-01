@@ -5,9 +5,9 @@ import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { MAX_OWNED_VAULTS, isServerAdmin, requireScope } from '../auth.js'
 import { ApiError, invalid, notFound } from '../lib/errors.js'
 import { PROP_TYPES } from '../notes/presets.js'
+import { profileOf } from '../notes/profiles.js'
 import { safeFileName, writeFileAtomic } from '../lib/util.js'
 import type { Vault } from '../notes/vault.js'
-import { createExampleVault } from '../notes/example.js'
 import { requestLang } from '../i18n.js'
 import { hasArea, restrictSql } from '../notes/search.js'
 import { Register, Services, T, accessOf, noteJson, vaultFor } from './common.js'
@@ -22,6 +22,7 @@ function vaultSummary(s: Services, v: Vault, req: FastifyRequest) {
     id: v.id,
     name: v.config.name,
     preset: v.config.preset,
+    restricted_view: !!profileOf(v)?.restrictedView,
     note_count: limited ? (s.db.get<{ n: number }>(`SELECT COUNT(*) n FROM notes n WHERE n.vault = ? ${where}`, ...params)?.n ?? 0) : v.count(),
     types: Object.keys(v.config.types),
     curator: { enabled: v.config.curator.enabled, profile: v.config.curator.profile, mode: v.config.curator.mode ?? 'full' },
@@ -42,8 +43,8 @@ export const registerVaults: Register = (app: FastifyInstance, s: Services) => {
     {
       schema: {
         tags: T.vaults,
-        summary: 'Vault anlegen {name, preset: dnd|notes|empty, lang?: de|en} – empty = frei (nur „Notiz“, Kurator verknüpft nur); lang = Sprache der Ordnernamen (Standard: Sprache der Anfrage). Recht: admin oder create_vault – der anlegende Token hat im neuen Vault alle Rechte',
-        body: { type: 'object', properties: { name: { type: 'string' }, preset: { type: 'string', enum: ['dnd', 'notes', 'empty'] }, lang: { type: 'string', enum: ['de', 'en'] } }, required: ['name'] },
+        summary: 'Vault anlegen {name, preset, lang?: de|en} (Vorlagen: GET /presets) – empty = frei (nur „Notiz“, Kurator verknüpft nur); lang = Sprache der Ordnernamen (Standard: Sprache der Anfrage). Recht: admin oder create_vault – der anlegende Token hat im neuen Vault alle Rechte',
+        body: { type: 'object', properties: { name: { type: 'string' }, preset: { type: 'string' }, lang: { type: 'string', enum: ['de', 'en'] } }, required: ['name'] },
       },
     },
     async (req, reply) => {
@@ -51,6 +52,7 @@ export const registerVaults: Register = (app: FastifyInstance, s: Services) => {
       const b = req.body as any
       const p = req.principal!
       if (!isServerAdmin(p) && (p.ownedVaults?.length ?? 0) >= MAX_OWNED_VAULTS) throw new ApiError('forbidden', `Dieser Zugang hat bereits ${MAX_OWNED_VAULTS} eigene Vaults.`)
+      if (b.preset && !s.plugins!.presetAvailable(b.preset)) throw invalid('Unbekannte Vorlage.')
       const v = await s.vaults.create(b.name, b.preset ?? 'empty', b.lang ?? requestLang(req))
       if (p.tokenId) s.auth.addOwnedVault(p.tokenId, v.id)
       reply.code(201)
@@ -58,9 +60,16 @@ export const registerVaults: Register = (app: FastifyInstance, s: Services) => {
     },
   )
 
-  app.post('/vaults/example', { schema: { tags: T.vaults, summary: 'Beispiel-Vault mit einer erfundenen Kampagne anlegen (zum Ausprobieren)' } }, async (req, reply) => {
+  app.get('/presets', { schema: { tags: T.vaults, summary: 'Verfügbare Vorlagen für neue Vaults (Kern und eingeschaltete Plugins)' } }, async () => ({
+    items: s.plugins!.availablePresets().map((p) => ({ id: p.id, label: p.label, description: p.description ?? null, plugin: p.plugin ?? null, example: p.example ? { name: p.example.name, description: p.example.description ?? null } : null })),
+  }))
+
+  app.post('/vaults/example', { schema: { tags: T.vaults, summary: 'Beispiel-Vault einer Vorlage anlegen {preset?} (zum Ausprobieren)', body: { type: 'object', nullable: true, properties: { preset: { type: 'string' } } } } }, async (req, reply) => {
     requireScope(req, 'admin')
-    const v = await createExampleVault(s.vaults)
+    const wanted = (req.body as any)?.preset
+    const preset = s.plugins!.availablePresets().find((p) => p.example && (!wanted || p.id === wanted))
+    if (!preset) throw notFound('Beispiel-Vault')
+    const v = await s.vaults.createExample(preset)
     reply.code(201)
     return vaultSummary(s, v, req)
   })

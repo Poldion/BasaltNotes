@@ -28,7 +28,8 @@ export interface CuratorConfig {
   min_confidence_auto: number
   learn_aliases: boolean
   section: string
-  profile: 'dnd' | 'notes'
+  /** Regelwerk des Kurators; Plugins können eigene mitbringen */
+  profile: string
   /** full = mit LLM einsortieren und anlegen, link = nur Erwähnungen vorhandener Notizen verlinken (ohne LLM) */
   mode?: 'full' | 'link'
 }
@@ -41,119 +42,7 @@ export interface VaultConfig {
 }
 
 const P = {
-  campaign: { name: 'campaign', label: 'Kampagne', type: 'link', link_types: ['campaign'] } as PropDef,
   status: (options: string[]): PropDef => ({ name: 'status', label: 'Status', type: 'select', options }),
-  attitude: { name: 'attitude', label: 'Haltung', type: 'select', options: ['freundlich', 'neutral', 'feindlich'] } as PropDef,
-}
-
-export const DND_TYPES: Record<string, TypeDef> = {
-  campaign: {
-    label: 'Kampagne',
-    folder: '{title}',
-    template: 'campaign',
-    properties: [
-      { name: 'system', label: 'System', type: 'text' },
-      P.status(['aktiv', 'pausiert', 'beendet']),
-      { name: 'dm', label: 'Spielleitung', type: 'text' },
-      { name: 'players', label: 'Spielende', type: 'players' },
-    ],
-  },
-  session: {
-    label: 'Session',
-    folder: '{campaign}/Sessions',
-    template: 'session',
-    properties: [
-      P.campaign,
-      { name: 'number', label: 'Nummer', type: 'number' },
-      { name: 'date', label: 'Datum', type: 'datetime' },
-      { name: 'players', label: 'Spielende', type: 'players' },
-      { name: 'source', label: 'Quelle', type: 'text' },
-      { name: 'transcript_url', label: 'Transkript', type: 'url' },
-    ],
-  },
-  character: {
-    label: 'Charakter',
-    folder: '{campaign}/Charaktere',
-    template: 'character',
-    properties: [
-      P.campaign,
-      { name: 'player', label: 'Spieler:in', type: 'text' },
-      { name: 'class', label: 'Klasse', type: 'text' },
-      { name: 'race', label: 'Volk', type: 'text' },
-      P.status(['lebendig', 'tot', 'verschollen']),
-    ],
-  },
-  npc: {
-    label: 'NPC',
-    folder: '{campaign}/NPCs',
-    template: 'npc',
-    properties: [
-      P.campaign,
-      { name: 'role', label: 'Rolle', type: 'text' },
-      { name: 'faction', label: 'Fraktion', type: 'link', link_types: ['faction'] },
-      P.attitude,
-      P.status(['lebendig', 'tot', 'verschollen', 'unbekannt']),
-      { name: 'location', label: 'Ort', type: 'link', link_types: ['location'] },
-    ],
-  },
-  location: {
-    label: 'Ort',
-    folder: '{campaign}/Orte',
-    template: 'location',
-    properties: [P.campaign, { name: 'region', label: 'Region', type: 'text' }, { name: 'parent', label: 'Liegt in', type: 'link', link_types: ['location'] }],
-  },
-  faction: {
-    label: 'Fraktion',
-    folder: '{campaign}/Fraktionen',
-    template: 'faction',
-    properties: [P.campaign, { name: 'leader', label: 'Anführung', type: 'link', link_types: ['npc', 'character'] }, P.attitude],
-  },
-  monster: {
-    label: 'Monster',
-    folder: '{campaign}/Monster',
-    template: 'monster',
-    properties: [
-      P.campaign,
-      { name: 'creature_type', label: 'Kreaturtyp', type: 'text' },
-      { name: 'cr', label: 'Herausforderungsgrad', type: 'text' },
-      { name: 'ac', label: 'RK', type: 'number' },
-      { name: 'hp', label: 'TP', type: 'text' },
-      P.status(['lebendig', 'besiegt', 'geflohen', 'unbekannt']),
-      { name: 'location', label: 'Ort', type: 'link', link_types: ['location'] },
-    ],
-  },
-  item: {
-    label: 'Gegenstand',
-    folder: '{campaign}/Gegenstände',
-    template: 'item',
-    properties: [
-      P.campaign,
-      { name: 'owner', label: 'Besitz', type: 'link', link_types: ['npc', 'character'] },
-      { name: 'rarity', label: 'Seltenheit', type: 'select', options: ['gewöhnlich', 'ungewöhnlich', 'selten', 'sehr selten', 'legendär', 'Artefakt'] },
-      { name: 'value', label: 'Wert', type: 'text' },
-    ],
-  },
-  quest: {
-    label: 'Quest',
-    folder: '{campaign}/Quests',
-    template: 'quest',
-    properties: [P.campaign, P.status(['offen', 'erledigt', 'gescheitert']), { name: 'giver', label: 'Auftrag von', type: 'link', link_types: ['npc', 'character', 'faction'] }],
-  },
-  lore: { label: 'Lore', folder: '{campaign}/Lore', template: 'lore', properties: [P.campaign] },
-  script: {
-    label: 'Skript (Vorbereitung)',
-    folder: '{campaign}/Skripte',
-    template: 'script',
-    defaults: { visibility: 'dm', status: 'geplant' },
-    properties: [
-      P.campaign,
-      P.status(['geplant', 'gespielt', 'verworfen']),
-      { name: 'planned_for', label: 'Geplant für', type: 'date' },
-      { name: 'session', label: 'Gespielt in', type: 'link', link_types: ['session'] },
-    ],
-  },
-  fact: { label: 'Fakten', folder: '{campaign}', single_note: 'Gesetzte Fakten', properties: [P.campaign] },
-  note: { label: 'Notiz', folder: '', properties: [] },
 }
 
 export const NOTES_TYPES: Record<string, TypeDef> = {
@@ -254,16 +143,11 @@ export const NOTES_TYPES: Record<string, TypeDef> = {
   howto: { label: 'Anleitung', folder: 'Anleitungen', template: 'howto', properties: [] },
 }
 
-/** Mitgelieferte Typen je Vorlage (zum Kennzeichnen in der Oberfläche) */
-export const PRESET_TYPES: Record<string, Record<string, TypeDef>> = {}
-
 /** Stand der Vorlagen – ältere Vaults bekommen neue Standardtypen beim Öffnen nachgerüstet */
 export const PRESET_REVISION = 4
 /** Typen, die mit einer Revision hinzugekommen sind */
-export const ADDED_TYPES: Record<number, Record<string, string[]>> = {
-  2: { dnd: ['script'] },
-  3: { dnd: ['monster'] },
-  4: { notes: ['journal', 'task', 'list', 'event', 'recipe', 'idea', 'bookmark', 'howto'] },
+const NOTES_ADDED: Record<number, string[]> = {
+  4: ['journal', 'task', 'list', 'event', 'recipe', 'idea', 'bookmark', 'howto'],
 }
 
 export const COMMON_PROPS: PropDef[] = [
@@ -278,17 +162,12 @@ export const DEFAULT_CURATOR: CuratorConfig = {
   review: ['update_property', 'merge_entities', 'contradiction', 'delete', 'update_quest'],
   min_confidence_auto: 0.8,
   learn_aliases: true,
-  section: 'Aus den Sessions',
-  profile: 'dnd',
+  section: 'Erwähnungen',
+  profile: 'notes',
 }
 
 /** Ordnernamen der Vorlagen für Vaults, die auf Englisch angelegt werden (Platzhalter bleiben) */
 const EN_FOLDERS: Record<string, string> = {
-  Charaktere: 'Characters',
-  Orte: 'Locations',
-  Fraktionen: 'Factions',
-  Gegenstände: 'Items',
-  Skripte: 'Scripts',
   Notizen: 'Notes',
   Besprechungen: 'Meetings',
   Personen: 'People',
@@ -303,29 +182,64 @@ const EN_FOLDERS: Record<string, string> = {
   Anleitungen: 'How-tos',
 }
 
-export function localizedFolder(folder: string | undefined, lang: 'de' | 'en'): string | undefined {
+export function localizedFolder(folder: string | undefined, lang: 'de' | 'en', extra: Record<string, string> = {}): string | undefined {
   if (lang !== 'en' || !folder) return folder
   return folder
     .split('/')
-    .map((seg) => EN_FOLDERS[seg] ?? seg)
+    .map((seg) => extra[seg] ?? EN_FOLDERS[seg] ?? seg)
     .join('/')
 }
 
 /** Freier Vault: nur „Notiz“ */
 export const EMPTY_TYPES: Record<string, TypeDef> = { note: { label: 'Notiz', folder: '', properties: [] } }
 
-export function presetConfig(name: string, preset: string, lang: 'de' | 'en' = 'de'): VaultConfig {
-  const cfg = presetConfigDe(name, preset)
-  if (lang === 'de') return cfg
-  return { ...cfg, types: Object.fromEntries(Object.entries(cfg.types).map(([k, t]) => [k, { ...t, folder: localizedFolder(t.folder, lang) }])) }
+/** Vorlage für neue Vaults: im Kern (notes, empty) oder aus einem Plugin */
+export interface PresetDef {
+  id: string
+  /** Name in der Auswahl */
+  label: string
+  /** Längere Beschreibung für die Auswahl */
+  description?: string
+  types: Record<string, TypeDef>
+  /** Vorlagentexte, Schlüssel wie TypeDef.template */
+  templates?: Record<string, string>
+  curator?: Partial<CuratorConfig>
+  /** Typen, die mit einer Revision hinzugekommen sind */
+  added_types?: Record<number, string[]>
+  /** Englische Ordnernamen für Vaults, die auf Englisch angelegt werden */
+  folders_en?: Record<string, string>
+  /** Beispiel-Vault zum Ausprobieren */
+  example?: { name: string; description?: string; notes: { type: string; title: string; frontmatter?: Record<string, unknown>; body: string }[] }
+  /** Plugin, das die Vorlage mitbringt (setzt der Kern) */
+  plugin?: string
 }
 
-function presetConfigDe(name: string, preset: string): VaultConfig {
-  if (preset === 'dnd') return { name, preset, types: DND_TYPES, curator: { ...DEFAULT_CURATOR } }
-  if (preset === 'notes')
-    return { name, preset, types: NOTES_TYPES, curator: { ...DEFAULT_CURATOR, section: 'Erwähnungen', profile: 'notes' } }
-  // Freier Vault: nur „Notiz“, Ordner frei, Kurator verknüpft nur (ohne LLM)
-  return { name, preset: 'empty', types: EMPTY_TYPES, curator: { ...DEFAULT_CURATOR, section: 'Erwähnungen', profile: 'notes', mode: 'link' } }
+const registry = new Map<string, PresetDef>()
+
+/** Vorlage bekannt machen (gleiche id ersetzt die vorige, z. B. beim erneuten Laden) */
+export function registerPreset(def: PresetDef) {
+  registry.set(def.id, def)
+}
+
+export function getPreset(id: string | undefined): PresetDef | undefined {
+  return id ? registry.get(id) : undefined
+}
+
+export function listPresets(): PresetDef[] {
+  return [...registry.values()]
+}
+
+/** Vorlagentext aus allen bekannten Vorlagen */
+export function templateFor(name: string): string | undefined {
+  if (TEMPLATES[name]) return TEMPLATES[name]
+  for (const def of registry.values()) if (def.templates?.[name]) return def.templates[name]
+  return undefined
+}
+
+export function presetConfig(name: string, preset: string, lang: 'de' | 'en' = 'de'): VaultConfig {
+  const def = registry.get(preset) ?? registry.get('empty')!
+  const types = lang === 'de' ? def.types : Object.fromEntries(Object.entries(def.types).map(([k, t]) => [k, { ...t, folder: localizedFolder(t.folder, lang, def.folders_en) }]))
+  return { name, preset: def.id, types, curator: { ...DEFAULT_CURATOR, ...def.curator } }
 }
 
 /** Kompakte vault.yaml (Eigenschaften der Standardtypen stehen im Code und müssen nicht in der Datei stehen). */
@@ -340,17 +254,6 @@ export function presetYaml(cfg: VaultConfig): Record<string, any> {
 
 const H = '# {{title}}\n\n'
 export const TEMPLATES: Record<string, string> = {
-  campaign: `${H}## Übersicht\n\n## Hausregeln\n`,
-  session: `${H}## Was bisher geschah\n\n## Ereignisse\n`,
-  character: `${H}## Hintergrund\n\n## Aus den Sessions\n`,
-  npc: `${H}## Beschreibung\n\n## Motive (DM)\n\n## Aus den Sessions\n`,
-  location: `${H}## Beschreibung\n\n## Bewohner\n\n## Aus den Sessions\n`,
-  faction: `${H}## Ziele\n\n## Mitglieder\n\n## Aus den Sessions\n`,
-  monster: `${H}## Beschreibung\n\n## Werte\n\n## Taktik\n\n## Beute\n\n## Aus den Sessions\n`,
-  item: `${H}## Wirkung\n\n## Herkunft\n\n## Aus den Sessions\n`,
-  quest: `${H}## Ziel\n\n## Hinweise\n\n## Fortschritt\n`,
-  lore: `${H}`,
-  script: `${H}## Ziel des Abends\n\n## Szenen\n\n## NPCs & Orte\n\n## Geheimnisse (DM)\n\n## Notizen nach dem Spiel\n`,
   meeting: `${H}## Zusammenfassung\n\n## Aufgaben\n\n## Termine\n`,
   person: `${H}## Notizen\n\n## Erwähnungen\n`,
   project: `${H}## Ziel\n\n## Aufgaben\n\n## Erwähnungen\n`,
@@ -364,7 +267,7 @@ export const TEMPLATES: Record<string, string> = {
   howto: `${H}## Schritte\n\n1. \n\n## Hinweise\n`,
 }
 
-PRESET_TYPES.dnd = DND_TYPES
-PRESET_TYPES.notes = NOTES_TYPES
-PRESET_TYPES.empty = EMPTY_TYPES
+registerPreset({ id: 'empty', label: 'Frei', description: 'Nur Notizen, Ordner nach Wahl', types: EMPTY_TYPES, curator: { mode: 'link' } })
+registerPreset({ id: 'notes', label: 'Alltag', description: 'Tagebuch, Aufgaben, Termine …', types: NOTES_TYPES, added_types: NOTES_ADDED })
+
 export const PROP_TYPES: PropType[] = ['text', 'number', 'date', 'datetime', 'select', 'link', 'list', 'players', 'boolean', 'url']

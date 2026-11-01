@@ -24,7 +24,7 @@ function size(n: number): string {
 export function DocumentUpload({ vault, campaigns, onUploaded }: { vault: string; campaigns: string[]; onUploaded: () => void }) {
   const types = useTypes(vault)
   const { vaults, features } = useApp()
-  const dnd = vaults.find((v) => v.id === vault)?.curator.profile === 'dnd'
+  const dnd = !!vaults.find((v) => v.id === vault)?.restricted_view
   const [items, setItems] = useState<Item[]>([])
   const [drag, setDrag] = useState(false)
   const [campaign, setCampaign] = useState(campaigns.length === 1 ? campaigns[0] : '')

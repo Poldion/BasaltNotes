@@ -13,7 +13,6 @@ import { SetupPage } from './pages/SetupPage'
 import { InboxPage } from './pages/InboxPage'
 import { ProposalsPage } from './pages/ProposalsPage'
 import { RunsPage } from './pages/RunsPage'
-import { CampaignPage } from './pages/CampaignPage'
 import { GraphPage } from './pages/GraphPage'
 import { TrashPage } from './pages/TrashPage'
 import { VaultSettingsPage } from './pages/VaultSettingsPage'
@@ -123,7 +122,6 @@ export function App() {
           <Route path="proposals" element={<ProposalsPage />} />
           <Route path="runs" element={<RunsPage />} />
           <Route path="runs/:runId" element={<RunsPage />} />
-          <Route path="campaign/:campaign" element={<CampaignPage />} />
           <Route path="graph" element={<GraphPage />} />
           <Route path="trash" element={<TrashPage />} />
           <Route path="settings" element={<VaultSettingsPage />} />

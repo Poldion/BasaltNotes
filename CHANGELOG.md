@@ -4,6 +4,27 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.25.0] – 2026-11-01
+
+### Added
+
+- Plugin catalog, similar to HACS in Home Assistant: under Settings → Plugins, browse, install, update and remove
+  plugins from GitHub releases. The official repo [BasaltNotes-Plug](https://github.com/Poldion/BasaltNotes-Plug) is
+  preconfigured; any other GitHub repo can be added by URL. Updates are shown, a warning appears before installing, and
+  plugins with a server part ask for a server restart. Packages are not reviewed or signed.
+- New plugin interfaces: `presets` (templates for new vaults), `profiles` (rules for curator, inbox and chat), `roles`
+  (account roles) and `registerHomeSection` (sections on a notebook's home page). `GET /presets` lists the templates.
+
+### Changed
+
+- BasaltNotes is now universal: everything specific to D&D moved into the built-in plugin "D&D": campaigns with home
+  page and timeline, the player view and player accounts, the D&D template, the curator's rules and the example vault.
+- New installations start with one vault "Notizen" and the D&D plugin switched off. The example vault is only offered
+  while a plugin provides one.
+- Existing D&D vaults keep working without any step: the plugin switches itself on while a vault uses the `dnd`
+  template. Notes, API paths and the `campaign` and `visibility` fields stay the same.
+- Managing plugins now requires server admin rights; an admin level on a single notebook is no longer enough.
+
 ## [0.24.0] – 2026-11-01
 
 ### Added
@@ -58,5 +79,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - User interface in English and German; API error messages in both languages; template folder names follow the
   language a vault is created in.
 
+[0.25.0]: https://github.com/Poldion/BasaltNotes/releases/tag/v0.25.0
 [0.24.0]: https://github.com/Poldion/BasaltNotes/releases/tag/v0.24.0
 [0.23.0]: https://github.com/Poldion/BasaltNotes/releases/tag/v0.23.0

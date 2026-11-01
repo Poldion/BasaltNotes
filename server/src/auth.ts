@@ -11,16 +11,40 @@ export const SCOPES = ['read', 'write', 'inbox', 'curate', 'admin', 'create_vaul
 export type Scope = (typeof SCOPES)[number]
 
 /** member = Rechte je Notizbuch wie bei Tokens; editor und viewer sind die älteren Rollen dafür */
-export const ROLES = ['admin', 'member', 'editor', 'viewer', 'player'] as const
-export type Role = (typeof ROLES)[number]
+export const ROLES: string[] = ['admin', 'member', 'editor', 'viewer']
+export type Role = string
 
-/** Rechte je Rolle. „player“ sieht nur Inhalte mit visibility: players. */
+/** Rechte je Rolle */
 export const ROLE_SCOPES: Record<Role, Scope[]> = {
   admin: [...SCOPES],
   member: [],
   editor: ['read', 'write', 'inbox', 'curate'],
   viewer: ['read'],
-  player: ['read'],
+}
+
+/** Rollen mit eingeschränkter Sicht: sehen nur Inhalte mit visibility: players */
+const RESTRICTED_ROLES = new Set<string>()
+
+/** Rolle eines Plugins, die es nur gibt, solange das Plugin eingeschaltet ist (bestehende Konten bleiben eingeschränkt) */
+export interface RoleDef {
+  id: string
+  label: string
+  scopes: Scope[]
+  /** Nur eingeschränkte Sicht (visibility: players) */
+  restricted?: boolean
+  /** Das Plugin, das die Rolle mitbringt (setzt der Kern) */
+  plugin?: string
+}
+
+export const PLUGIN_ROLES = new Map<string, RoleDef>()
+
+export function registerRole(def: RoleDef) {
+  if (ROLE_SCOPES[def.id] && !PLUGIN_ROLES.has(def.id)) throw new Error(`Rolle „${def.id}“ gibt es schon`)
+  PLUGIN_ROLES.set(def.id, def)
+  if (!ROLES.includes(def.id)) ROLES.push(def.id)
+  ROLE_SCOPES[def.id] = def.scopes
+  ROLE_LABELS[def.id] = def.label
+  if (def.restricted) RESTRICTED_ROLES.add(def.id)
 }
 
 /** So viele eigene Vaults darf ein Token ohne admin-Recht anlegen */
@@ -31,7 +55,6 @@ export const ROLE_LABELS: Record<Role, string> = {
   member: 'Mitglied',
   editor: 'Bearbeiten',
   viewer: 'Lesen',
-  player: 'Spieler (nur Spieler-Inhalte)',
 }
 
 /** Rechte-Stufen einer Freigabe. Alle Zugänge werden über dieselben Scopes geprüft (siehe requireScope). */
@@ -390,7 +413,7 @@ export class Auth {
       vaults: json<string[] | '*'>(u.vaults, '*'),
       scopes: [...ROLE_SCOPES[u.role]],
       access: accessOfVaults(json<string[] | '*'>(u.vaults, '*'), ROLE_SCOPES[u.role]),
-      visibility: u.role === 'player' ? 'players' : null,
+      visibility: RESTRICTED_ROLES.has(u.role) ? 'players' : null,
       campaign: u.campaign ?? null,
       csrf,
     }

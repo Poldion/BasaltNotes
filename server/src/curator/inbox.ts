@@ -1,3 +1,4 @@
+import { profileOf } from '../notes/profiles.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import { ulid } from 'ulid'
@@ -61,20 +62,6 @@ export class Inbox {
     )
   }
 
-  /** Kampagne per Name zuordnen (Groß-/Kleinschreibung, Kurzform) und bei Bedarf anlegen. */
-  async ensureCampaign(v: Vault, name: string | null | undefined): Promise<string | null> {
-    if (!name || !v.config.types.campaign) return name ?? null
-    const clean = String(name).replace(/^\[\[|\]\]$/g, '').trim()
-    if (!clean) return null
-    const id = v.resolveName(clean, { type: 'campaign' })
-    if (id) return v.readNote(id)?.title ?? clean
-    const all = this.db.all<{ title: string }>("SELECT title FROM notes WHERE vault = ? AND type = 'campaign'", v.id)
-    const hit = all.find((c) => slugify(c.title) === slugify(clean))
-    if (hit) return hit.title
-    const n = await v.createNote({ type: 'campaign', title: clean, frontmatter: { status: 'aktiv', visibility: 'players' } })
-    return n.title
-  }
-
   private findBySource(v: Vault, key: string): Note | null {
     const row = this.db.get<{ note_id: string }>("SELECT note_id FROM props WHERE vault = ? AND key = 'source' AND value = ?", v.id, key)
     return row ? v.readNote(row.note_id) : null
@@ -101,23 +88,20 @@ export class Inbox {
 
     let note: Note | null = null
     let campaign = payload.campaign ?? payload.note?.frontmatter?.campaign ?? null
-    if (v.config.curator.profile === 'dnd') campaign = await this.ensureCampaign(v, campaign)
+    const profile = profileOf(v)
+    if (profile?.resolveGroup) campaign = await profile.resolveGroup({ v, db: this.db, slugify, name: campaign })
 
     if (payload.note?.title) {
       const n = payload.note
       const title = n.title!.trim()
-      const type = n.type || (v.config.curator.profile === 'dnd' ? 'session' : 'meeting')
+      const type = n.type || (profile?.defaultInboxType ?? 'meeting')
       const fm: Record<string, any> = { ...(n.frontmatter ?? {}) }
       delete fm.id
       if (campaign) fm.campaign = campaign
       fm.source = sourceKey
       if (payload.source?.url) fm.source_url = payload.source.url
-      if (fm.visibility === undefined && v.config.curator.profile === 'dnd') fm.visibility = 'players'
       note = this.findBySource(v, sourceKey)
-      if (!note && type === 'session' && campaign && (fm.number === undefined || fm.number === null)) {
-        const count = this.db.get<{ n: number }>("SELECT COUNT(*) n FROM notes WHERE vault = ? AND type = 'session' AND lower(campaign) = lower(?)", v.id, campaign)?.n ?? 0
-        fm.number = count + 1
-      }
+      profile?.inboxFrontmatter?.({ v, db: this.db, slugify, type, group: campaign, frontmatter: fm, isNew: !note })
       if (note) {
         if (note.title !== title) note = (await v.renameNote(note.id, { title })).note
         note = await v.patchNote(note.id, { frontmatter: { ...fm, type } }, undefined)
@@ -172,11 +156,10 @@ export class Inbox {
     const sourceKey = `upload:${hash}`
     const existing = this.findBySource(v, sourceKey)
     const attachment = existing?.frontmatter.document ? String(existing.frontmatter.document) : path.posix.basename(v.saveAttachment(up.filename, up.data))
-    const dnd = v.config.curator.profile === 'dnd'
-    const type = up.type && v.config.types[up.type] ? up.type : dnd ? (['script', 'lore'].find((t) => v.config.types[t]) ?? 'note') : 'note'
+    const defaults = profileOf(v)?.documentDefaults?.({ v, visibility: up.visibility }) ?? {}
+    const type = up.type && v.config.types[up.type] ? up.type : (defaults.type ?? 'note')
     const title = (up.title?.trim() || path.basename(up.filename).replace(/\.[^.]+$/, '')).trim() || 'Dokument'
-    // Sichtbarkeit nur in D&D-Vaults (Spieler-Sicht); Standard: nur DM
-    const visibility = dnd ? (up.visibility ?? 'dm') : undefined
+    const visibility = defaults.visibility
     return this.submit(v.id, {
       source: { app: 'upload', key: sourceKey, url: `/api/v1/vaults/${encodeURIComponent(v.id)}/attachments/${encodeURIComponent(attachment)}` },
       note: { type, title, frontmatter: { ...(visibility ? { visibility } : {}), document: attachment, document_kind: doc.kind, ...(doc.pages ? { pages: doc.pages } : {}) }, body: doc.text },

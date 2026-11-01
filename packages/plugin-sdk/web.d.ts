@@ -10,7 +10,9 @@ import type { ComponentType, ReactNode } from 'react'
 export interface WebPluginContext {
   id: string
   /** Seite registrieren. scope "vault": /<vault>/<path>, "global": /p/<path> */
-  registerPage(page: { path: string; scope?: 'vault' | 'global'; component: ComponentType }): void
+  registerPage(page: { path: string; scope?: 'vault' | 'global'; component: ComponentType; embed?: boolean }): void
+  /** Abschnitt auf der Startseite eines Notizbuchs */
+  registerHomeSection(section: { id: string; order?: number; component: ComponentType<{ vault: string }> }): void
   /** Eintrag in der Seitenleiste (Notizbuch-Bereich) */
   registerNav(item: { id: string; label: string; icon?: string; path: string; order?: number; visible?: (info: { vault: string; types: string[] }) => boolean }): void
   /** Karte unter Einstellungen */
@@ -38,6 +40,7 @@ export interface AppState {
   vaults: { id: string; name: string; preset: string; note_count: number; types: string[] }[]
   canWrite: boolean
   isAdmin: boolean
+  embed: boolean
   isPlayer: boolean
   features: Features
   toast(text: string, kind?: 'info' | 'error' | 'success'): void
@@ -49,6 +52,9 @@ export function useVaultEvents(vault: string | undefined, fn: (e: { event: strin
 export function Modal(props: { title?: ReactNode; onClose: () => void; children: ReactNode; footer?: ReactNode; className?: string }): ReactNode
 export function Spinner(): ReactNode
 export function TypeDot(props: { type: string }): ReactNode
+/** Link in einer Einbettung an die umgebende Seite melden; true = erledigt */
+export function embedNavigate(noteId: string, title: string, noteType: string): boolean
+export function slugify(s: string): string
 export function relTime(v?: string | null): string
 export function fmtDate(v?: string | null): string
 export function fmtDateTime(v?: string | null): string

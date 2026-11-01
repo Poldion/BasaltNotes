@@ -66,7 +66,7 @@ describe('Update einer bestehenden Installation', () => {
     fs.mkdirSync(dir2, { recursive: true })
     const a = await buildApp({ config: { dataDir: dir2, watch: false, commitDelayMs: 20, features: { curator: false, chat: false, setup_done: false } }, llm: new FakeLlm([]), logger: false, webDir: null })
     const tok = a.services.auth.createToken({ name: 'x', vaults: '*', scopes: ['admin'] })
-    await a.app.inject({ method: 'POST', url: '/api/v1/vaults/dnd/notes', payload: { title: 'Eine Notiz' }, headers: { authorization: `Bearer ${tok.token}` } })
+    await a.app.inject({ method: 'POST', url: '/api/v1/vaults/notizen/notes', payload: { title: 'Eine Notiz' }, headers: { authorization: `Bearer ${tok.token}` } })
     await a.app.close()
     const b = await buildApp({ config: { dataDir: dir2, watch: false, commitDelayMs: 20 }, llm: new FakeLlm([]), logger: false, webDir: null })
     expect(b.services.config.features).toEqual({ curator: false, chat: false, setup_done: true })

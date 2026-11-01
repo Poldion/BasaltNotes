@@ -67,8 +67,6 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
   const events = new EventBus()
   const jobs = new JobQueue(db)
   const vaults = new VaultManager(path.join(config.dataDir, 'vaults'), db, events, { commitDelayMs: config.commitDelayMs, watch: config.watch })
-  await vaults.init()
-  initFeatures(config, db)
   const search = new Search(db)
   const auth = new Auth(db, config)
   const generatedPassword = await auth.init()
@@ -82,6 +80,9 @@ export async function buildApp(opts: BuildOptions = {}): Promise<{ app: FastifyI
   const plugins = new PluginManager(services)
   await plugins.load()
   services.plugins = plugins
+  // Erst nach den Plugins: Vaults brauchen die Vorlagen, die Plugins mitbringen
+  await vaults.init()
+  initFeatures(config, db)
 
   const app = Fastify({
     logger: opts.logger === false ? false : { level: process.env.LOG_LEVEL ?? 'info' },

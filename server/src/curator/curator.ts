@@ -4,18 +4,19 @@ import { Db, json, nowIso } from '../db.js'
 import { EventBus } from '../events.js'
 import { ApiError, CancelledError, isCancelled, notFound } from '../lib/errors.js'
 import { isNamePrefix, nameSimilarity } from '../lib/similarity.js'
-import { norm } from '../lib/util.js'
+import { norm, slugify } from '../lib/util.js'
 import { composeNote, headings, listBlocks, mergeFrontmatterText, parseNote, removeBlock, setBlock, stringifyFrontmatter, stripBlockMarkers, type BlockInput } from '../notes/markdown.js'
 import { Search } from '../notes/search.js'
 import { stripLink, type Note, type Vault } from '../notes/vault.js'
 import type { VaultManager } from '../notes/vaults.js'
 import type { LlmClient } from './llm.js'
 import { findDuplicates } from './duplicates.js'
+import { profileOf } from '../notes/profiles.js'
 import { linkNoteBody } from './linker.js'
 import { RELATION_KINDS, type BlockSpec, type ExEntity, type ExRelation, type Extraction, type Operation, type Resolution } from './types.js'
 
 /** Typen, die keine „Dinge der Welt“ sind und nicht extrahiert werden. */
-const NON_ENTITY_TYPES = new Set(['session', 'campaign', 'fact', 'note', 'meeting', 'lore', 'quest', 'script'])
+const NON_ENTITY_TYPES = new Set(['fact', 'note', 'meeting', 'quest'])
 /** Eigenschaften, deren Änderung eher ein Widerspruch als ein Zustandswechsel ist. */
 const IDENTITY_PROPS = new Set(['race', 'class', 'player', 'region', 'parent', 'origin', 'rarity', 'organization'])
 
@@ -265,7 +266,8 @@ export class Curator {
   // ============================================================ 1. Erkennen
 
   entityTypes(v: Vault): string[] {
-    return Object.keys(v.config.types).filter((t) => !NON_ENTITY_TYPES.has(t))
+    const extra = profileOf(v)?.nonEntityTypes ?? []
+    return Object.keys(v.config.types).filter((t) => !NON_ENTITY_TYPES.has(t) && !extra.includes(t))
   }
 
   extractionSchema(v: Vault): object {
@@ -350,25 +352,8 @@ export class Curator {
     const types = this.entityTypes(v)
       .map((t) => `${t} (${v.typeDef(t).label ?? t})`)
       .join(', ')
-    if (v.config.curator.profile === 'dnd') {
-      return [
-        `Du bist der Archivar einer D&D-Kampagne${campaign ? ` („${campaign}“)` : ''}. Lies den Text und gib NUR JSON nach dem Schema zurück.`,
-        `- Erkenne Entitäten der Typen: ${types}. Spielercharaktere sind "character", benannte Personen und ansprechbare Figuren "npc"${v.config.types.monster ? ', Gegner, Bestien und Kreaturen ohne eigene Rolle als Person (z. B. Schleim, Zombies, Wölfe) "monster"' : ''}.`,
-        '- Verwende für bekannte Entitäten exakt den Namen aus der Liste „Bekannte Namen“ (auch wenn der Text ihn anders schreibt) und trage jede abweichende Schreibweise in "mentioned_as" ein.',
-        '- "mentioned_as" enthält NUR abweichende Schreibweisen des Namens selbst (z. B. Verhörer aus der Transkription), keine Titel, Berufe oder Spielernamen.',
-        '- Ähnlich klingende Namen in einem Text (z. B. „Cydia“ und „Zylia“ in derselben Rolle) sind meist dieselbe Figur: dann EINE Entität mit beiden Schreibweisen.',
-        '- Nur Entitäten mit Eigennamen oder klar wiederkehrende, wichtige Figuren/Orte. Keine Gattungsbegriffe wie „der Wagen“ oder „die Sümpfe“.',
-        '- Räume und Bereiche innerhalb eines Ortes (z. B. "Raum A", "Thronsaal", "Gruft") sind KEINE eigenen Entitäten: trage sie bei der übergeordneten location unter "rooms" ein (name, description). In "relations" darfst du einen Raumnamen als Ziel verwenden (z. B. Zombies → location → "Raum C").',
-        '- "facts": kurze, eigenständige Aussagen (ein Satz) darüber, was in DIESEM Text über die Entität passiert oder bekannt wird.',
-        '- "properties": nur, wenn der Text es eindeutig sagt (z. B. role = Beruf/Funktion wie "Schmiedin", attitude freundlich/neutral/feindlich, status lebendig/tot).',
-        '- "quests": Aufträge/Ziele der Gruppe mit Status offen/erledigt/gescheitert. "facts" (oben, Liste): gesetzte Weltfakten.',
-        '- "relations": Beziehungen zwischen erkannten Entitäten und Quests, die im Text stehen. "from"/"to" = exakter Name bzw. Quest-Titel. "kind": giver (Questgeber: Quest → Person), target (Ziel einer Quest: Quest → Monster/Person/Gegenstand/Ort), location (hält sich auf/befindet sich in: Wesen/Gegenstand → Ort), member (gehört zu: Person → Fraktion), owner (besitzt: Gegenstand → Besitzer), parent (Ort liegt in Ort), ally, enemy, other. "label" = kurze Bezeichnung aus Sicht von "from" (z. B. "Questgeber", "Ziel", "Aufenthaltsort"), "inverse" = aus Sicht von "to" (z. B. "gibt Quest", "Ziel von", "Bewohner").',
-        '- Erfinde nichts. Nur was im Text steht. "confidence" 0..1: wie sicher die Entität korrekt erkannt ist.',
-        '- "visibility": "dm" für Geheimnisse/Motive/Hintergründe, die die Spielenden nicht erfahren haben, sonst "players".',
-        ...(hint ? [hint] : []),
-        `Bekannte Namen: ${knownNames}`,
-      ].join('\n')
-    }
+    const custom = profileOf(v)?.systemPrompt
+    if (custom) return custom({ group: campaign, types, hasType: (t) => !!v.config.types[t], knownNames, hint })
     return [
       'Du sortierst Notizen und Besprechungsprotokolle in eine persönliche Wissensdatenbank ein. Gib NUR JSON nach dem Schema zurück.',
       `- Erkenne Entitäten der Typen: ${types}.`,
@@ -451,11 +436,11 @@ export class Curator {
     }
   }
 
-  mergeExtractions(list: Extraction[]): Extraction {
+  mergeExtractions(list: Extraction[], entityRank: string[] = ['person', 'location', 'item']): Extraction {
     const ents = new Map<string, ExEntity>()
     // Bei widersprüchlichen Typen für denselben Namen gewinnt der „lebendigere“ Typ
     const rank = (t: string) => {
-      const i = ['character', 'npc', 'monster', 'person', 'faction', 'location', 'item'].indexOf(t)
+      const i = entityRank.indexOf(t)
       return i < 0 ? 99 : i
     }
     for (const ex of list) {
@@ -553,7 +538,7 @@ export class Curator {
     }
     if (!results.length)
       throw Object.assign(new ApiError('llm_unavailable', `Kein Abschnitt konnte ausgewertet werden. ${warnings[0] ?? ''}`, { reason: 'timeout' }), { noRetry: true })
-    return { extraction: this.mergeExtractions(results), chunks: chunks.length, model: info.model, context: info.context, warnings }
+    return { extraction: this.mergeExtractions(results, profileOf(v)?.entityRank), chunks: chunks.length, model: info.model, context: info.context, warnings }
   }
 
   // ============================================================ 2. Abgleichen
@@ -665,7 +650,7 @@ export class Curator {
         for (const [k, val] of Object.entries(e.properties)) if (allowed.has(k) && k !== 'campaign') props[k] = asLinkProp(v, e.type, k, val)
         const aliases = cleanVariants(e.name, e.mentioned_as, ctx.exclude)
         const fm: Record<string, any> = {}
-        if (ctx.campaign && cfg.profile === 'dnd') fm.campaign = ctx.campaign
+        if (ctx.campaign && profileOf(v)?.scoped) fm.campaign = ctx.campaign
         // Beschreibung, die das LLM als Schreibweise geliefert hat, als Rolle übernehmen
         if (allowed.has('role') && !props.role) {
           const role = roleFromVariants(e.name, e.mentioned_as)
@@ -1239,12 +1224,10 @@ export class Curator {
         ops = op ? [op] : []
         this.db.run('UPDATE runs SET extraction = ?, plan = ?, llm = ? WHERE id = ?', JSON.stringify({ mode: 'link', links: op?.links ?? [] }), JSON.stringify(ops), JSON.stringify({ mode: 'link' }), runId)
       } else {
-      // Vorbereitungs-Skripte beschreiben Geplantes – nichts davon ist schon passiert oder den Spielern bekannt
-      const isScript = src?.type === 'script'
-      const hint = isScript
-        ? '- WICHTIG: Der Text ist ein Vorbereitungs-Skript der Spielleitung. Beschreibe Figuren, Orte, Monster und Gegenstände sachlich in normalen Sätzen (wer/was sie sind, was sie wollen, was sie tun). Nur Handlungen der Gruppe, die erst noch passieren sollen, als geplant kennzeichnen ("Die Gruppe soll …"). Quests haben den Status "offen". Berufe und Rollen ("Schmiedin", "Koboldmagier") gehören in properties.role, nicht in "mentioned_as".'
-        : ''
-      const forceDm = input.forceDm || isScript
+      // Das Profil kann für bestimmte Quellen eigene Regeln setzen
+      const rules = src ? profileOf(v)?.sourceRules?.(src) : null
+      const hint = rules?.hint ?? ''
+      const forceDm = input.forceDm || !!rules?.restricted
       const { extraction, chunks, model, context, warnings } = await this.extract(
         v,
         input.text,
@@ -1282,7 +1265,7 @@ export class Curator {
       progress.phase = 'Anwenden'
       progress.step = 0
       progress.steps = 0
-      const exclude = this.playerNames(v, src?.frontmatter, campaign)
+      const exclude = new Set((profileOf(v)?.excludedNames?.({ v, db: this.db, slugify, frontmatter: src?.frontmatter, group: campaign }) ?? []).map(norm))
       ops = this.plan(v, extraction, resolutions, {
         sourceKey: input.sourceKey,
         sourceLink,
@@ -1406,21 +1389,6 @@ export class Curator {
       links: r.linked,
       reason: `Erwähnt: ${r.linked.join(', ')}`,
     }
-  }
-
-  /** Spielernamen aus Session und Kampagne – sie sind keine Aliasse von Figuren. */
-  private playerNames(v: Vault, fm: Record<string, any> | undefined, campaign: string | null): Set<string> {
-    const out = new Set<string>()
-    const add = (list: unknown) => {
-      if (!Array.isArray(list)) return
-      for (const p of list) if (p && typeof p === 'object' && (p as any).player) out.add(norm(String((p as any).player)))
-    }
-    add(fm?.players)
-    if (campaign) {
-      const cid = v.resolveName(campaign, { type: 'campaign' })
-      if (cid) add(v.readNote(cid)?.frontmatter.players)
-    }
-    return out
   }
 
   /**

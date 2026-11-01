@@ -102,11 +102,15 @@ interface User {
 
 type UserEdit = Partial<User> & { password?: string; isNew?: boolean; grants?: Grant[] }
 
-/** Rollen zur Auswahl; die älteren „Bearbeiten“ und „Lesen“ sind jetzt Stufen je Notizbuch */
-const ACCOUNT_ROLES = ['admin', 'member', 'player']
-
 function UsersCard() {
   const { me, vaults, toast } = useApp()
+  // Rollen zur Auswahl (Plugins können welche mitbringen); die älteren „Bearbeiten“ und „Lesen“ sind jetzt Stufen je Notizbuch
+  const [accountRoles, setAccountRoles] = useState<string[]>(['admin', 'member'])
+  useEffect(() => {
+    api<{ roles: { name: string }[] }>('/users')
+      .then((r) => setAccountRoles(r.roles.map((x) => x.name).filter((n) => n !== 'editor' && n !== 'viewer')))
+      .catch(() => undefined)
+  }, [])
   const [items, setItems] = useState<User[] | null>(null)
   const [roles, setRoles] = useState<{ name: string; label: string; scopes: string[] }[]>([])
   const [edit, setEdit] = useState<UserEdit | null>(null)
@@ -171,7 +175,11 @@ function UsersCard() {
         </button>
       </div>
       <p className="small muted" style={{ margin: 0 }}>
-        <strong>{tr('Administration')}</strong> {tr('darf alles inkl. Benutzer und Tokens.')}{' '}<strong>{tr('Mitglied')}</strong> {tr('bekommt je Notizbuch eine Rechte-Stufe wie ein Token.')}{' '}<strong>{tr('Spieler')}</strong> {tr('sieht nur Inhalte mit')}{' '}<code>{tr('visibility: players')}</code>{tr(', optional nur eine Kampagne.')}
+        <strong>{tr('Administration')}</strong> {tr('darf alles inkl. Benutzer und Tokens.')}{' '}<strong>{tr('Mitglied')}</strong> {tr('bekommt je Notizbuch eine Rechte-Stufe wie ein Token.')}{accountRoles.includes('player') && (
+          <>
+            {' '}<strong>{tr('Spieler')}</strong> {tr('sieht nur Inhalte mit')}{' '}<code>{tr('visibility: players')}</code>{tr(', optional nur eine Kampagne.')}
+          </>
+        )}
       </p>
       {items === null ? (
         <Spinner />
@@ -265,7 +273,7 @@ function UsersCard() {
             <label className="field">
               <span>{tr('Rolle')}</span>
               <select className="input" value={edit.role} disabled={edit.id === me?.user_id} onChange={(e) => setEdit({ ...edit, role: e.target.value })}>
-                {roles.filter((r) => ACCOUNT_ROLES.includes(r.name)).map((r) => (
+                {roles.filter((r) => accountRoles.includes(r.name)).map((r) => (
                   <option key={r.name} value={r.name}>
                     {r.label}
                   </option>
@@ -310,12 +318,25 @@ function UsersCard() {
   )
 }
 
-const PRESET_LABELS: Record<string, string> = { empty: tr('Frei'), notes: tr('Alltag'), dnd: 'D&D' }
+interface PresetInfo {
+  id: string
+  label: string
+  description: string | null
+  example: { name: string; description: string | null } | null
+}
 
 function VaultsCard() {
   const { vaults, refreshVaults, toast } = useApp()
   const [name, setName] = useState('')
   const [preset, setPreset] = useState('notes')
+  const [presets, setPresets] = useState<PresetInfo[]>([])
+  useEffect(() => {
+    api<{ items: PresetInfo[] }>('/presets').then((r) => setPresets(r.items)).catch(() => undefined)
+  }, [])
+  const presetLabel = (id: string) => {
+    const label = presets.find((p) => p.id === id)?.label
+    return label ? tr(label) : id
+  }
   const navigate = useNavigate()
   useEffect(() => {
     if (location.hash === '#vaults') document.getElementById('vaults')?.scrollIntoView()
@@ -347,7 +368,7 @@ function VaultsCard() {
         {vaults.map((v) => (
           <div key={v.id} className="list-item">
             <strong>{v.name}</strong>
-            <span className="chip">{PRESET_LABELS[v.preset] ?? v.preset}</span>
+            <span className="chip">{presetLabel(v.preset)}</span>
             <span className="grow small faint">
               {v.note_count} {tr('Notizen · Ordner')}{' '}<code>vaults/{v.id}</code>
             </span>
@@ -360,17 +381,22 @@ function VaultsCard() {
       <div className="row">
         <input className="input" style={{ maxWidth: 260 }} placeholder={tr('Name des neuen Vaults')} value={name} onChange={(e) => setName(e.target.value)} />
         <select className="input" style={{ width: 'auto' }} value={preset} onChange={(e) => setPreset(e.target.value)}>
-          <option value="empty">{tr('Frei – nur Notizen, Ordner nach Wahl')}</option>
-          <option value="notes">{tr('Vorlage: Alltag (Tagebuch, Aufgaben, Termine …)')}</option>
-          <option value="dnd">{tr('Vorlage: D&D')}</option>
+          {presets.map((p) => (
+            <option key={p.id} value={p.id}>
+              {tr(p.label)}
+              {p.description ? ` – ${tr(p.description)}` : ''}
+            </option>
+          ))}
         </select>
         <button className="btn primary" disabled={!name.trim()} onClick={create}>
           {tr('Vault anlegen')}
         </button>
         <span className="grow" />
-        <button className="btn small" onClick={createExample} title={tr('Erfundene D&D-Kampagne zum Ausprobieren')}>
-          {tr('Beispiel-Vault anlegen')}
-        </button>
+        {presets.some((p) => p.example) && (
+          <button className="btn small" onClick={createExample}>
+            {tr('Beispiel-Vault anlegen')}
+          </button>
+        )}
       </div>
     </section>
   )
@@ -1102,54 +1128,284 @@ function FeaturesCard() {
   )
 }
 
-/** Plugins ein-/ausschalten */
+interface CatalogItem {
+  id: string
+  name: string
+  version: string
+  description: string | null
+  author: string | null
+  repo: string
+  official: boolean
+  builtin: boolean
+  installed: string | null
+  update: boolean
+  compatible: boolean
+  min_app: string | null
+}
+
+interface CatalogView {
+  repos: { repo: string; official: boolean; error: string | null; count: number }[]
+  restart_required: string[]
+  items: CatalogItem[]
+}
+
+/** Plugins: installierte verwalten, aus Repos installieren und aktualisieren (wie HACS) */
 function PluginsCard() {
   const { toast } = useApp()
+  const [tab, setTab] = useState<'installed' | 'catalog' | 'repos'>('installed')
   const [items, setItems] = useState<PluginInfo[] | null>(null)
+  const [catalog, setCatalog] = useState<CatalogView | null>(null)
+  const [loadingCatalog, setLoadingCatalog] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
+  const [confirm, setConfirm] = useState<CatalogItem | null>(null)
+  const [repoUrl, setRepoUrl] = useState('')
+  const [filter, setFilter] = useState('')
+
+  const loadCatalog = useCallback(async (refresh = false) => {
+    setLoadingCatalog(true)
+    try {
+      setCatalog(await api<CatalogView>(`/plugins/catalog${refresh ? '?refresh=1' : ''}`))
+    } catch (e) {
+      toast((e as Error).message, 'error')
+    } finally {
+      setLoadingCatalog(false)
+    }
+  }, [toast])
+
   useEffect(() => {
     api<{ items: PluginInfo[] }>('/plugins')
       .then((r) => setItems(r.items))
       .catch(() => setItems([]))
-  }, [])
+    void loadCatalog()
+  }, [loadCatalog])
+
+  // Oberflächen-Module lassen sich nicht im laufenden Betrieb laden oder entladen
+  const reloadSoon = () => setTimeout(() => window.location.reload(), 800)
+
   const toggle = async (p: PluginInfo, enabled: boolean) => {
     setBusy(p.id)
     try {
       const r = await api<{ items: PluginInfo[] }>(`/plugins/${enc(p.id)}`, { method: 'PUT', body: { enabled } })
       setItems(r.items)
       toast(tr('„{name}“ {x} – Seite wird neu geladen', { name: p.name, x: enabled ? tr('eingeschaltet') : tr('ausgeschaltet') }), 'success')
-      // Oberflächen-Module lassen sich nicht im laufenden Betrieb entladen
-      setTimeout(() => window.location.reload(), 800)
+      reloadSoon()
     } catch (e) {
       toast((e as Error).message, 'error')
     } finally {
       setBusy(null)
     }
   }
+
+  const install = async (c: CatalogItem) => {
+    setConfirm(null)
+    setBusy(c.id)
+    try {
+      const r = await api<{ version: string; restart_required: boolean }>('/plugins/install', { body: { id: c.id } })
+      if (r.restart_required) {
+        toast(tr('„{name}“ {version} installiert. Wirksam nach einem Neustart des Servers.', { name: c.name, version: r.version }), 'success')
+        await loadCatalog()
+      } else {
+        toast(tr('„{name}“ {version} installiert – Seite wird neu geladen', { name: c.name, version: r.version }), 'success')
+        reloadSoon()
+      }
+    } catch (e) {
+      toast((e as Error).message, 'error')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const remove = async (id: string, name: string) => {
+    if (!window.confirm(tr('„{name}“ entfernen? Seine Einstellungen gehen verloren, deine Notizen bleiben.', { name }))) return
+    setBusy(id)
+    try {
+      await api(`/plugins/${enc(id)}`, { method: 'DELETE' })
+      toast(tr('„{name}“ entfernt – Seite wird neu geladen', { name }), 'success')
+      reloadSoon()
+    } catch (e) {
+      toast((e as Error).message, 'error')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const addRepo = async () => {
+    setBusy('repo')
+    try {
+      await api('/plugins/repos', { body: { url: repoUrl } })
+      setRepoUrl('')
+      await loadCatalog(true)
+      toast(tr('Repo eingetragen'), 'success')
+    } catch (e) {
+      toast((e as Error).message, 'error')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const removeRepo = async (repo: string) => {
+    setBusy('repo')
+    try {
+      await api('/plugins/repos', { method: 'DELETE', body: { url: repo } })
+      await loadCatalog(true)
+    } catch (e) {
+      toast((e as Error).message, 'error')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const updates = catalog?.items.filter((c) => c.update) ?? []
+  const shown = (catalog?.items ?? []).filter((c) => `${c.name} ${c.description ?? ''}`.toLowerCase().includes(filter.toLowerCase()))
+  const catalogById = new Map((catalog?.items ?? []).map((c) => [c.id, c]))
+
   return (
     <section className="card stack">
-      <div className="card-title" style={{ marginBottom: 0 }}>
-        {tr('Plugins')}
+      <div className="row">
+        <div className="card-title" style={{ marginBottom: 0 }}>
+          {tr('Plugins')}
+        </div>
+        <div className="tabs" role="tablist" aria-label={tr('Plugins')}>
+          <button className={tab === 'installed' ? 'active' : ''} onClick={() => setTab('installed')}>
+            {tr('Installiert')}
+            {updates.length > 0 ? ` (${updates.length})` : ''}
+          </button>
+          <button className={tab === 'catalog' ? 'active' : ''} onClick={() => setTab('catalog')}>
+            {tr('Katalog')}
+          </button>
+          <button className={tab === 'repos' ? 'active' : ''} onClick={() => setTab('repos')}>
+            {tr('Repos')}
+          </button>
+        </div>
       </div>
-      {items === null ? (
-        <Spinner />
-      ) : items.length === 0 ? (
-        <div className="small faint">{tr('Keine Plugins installiert.')}</div>
-      ) : (
-        items.map((p) => (
-          <label key={p.id} className="feature-toggle">
-            <input type="checkbox" checked={p.enabled} disabled={busy === p.id || !!p.error} onChange={(e) => void toggle(p, e.target.checked)} />
-            <div>
-              <strong>{tr(p.name)}</strong> <span className="small faint">{p.version}{p.builtin ? tr(' · mitgeliefert') : ''}</span>
-              {p.description && <div className="small muted">{tr(p.description)}</div>}
-              {(p.error || registry.errors[p.id]) && <div className="small" style={{ color: 'var(--danger)' }}>{p.error ?? registry.errors[p.id]}</div>}
-            </div>
-          </label>
-        ))
+
+      {!!catalog?.restart_required.length && (
+        <div className="banner">{tr('Neustart des Servers nötig, damit diese Plugins wirksam werden: {x}', { x: catalog.restart_required.join(', ') })}</div>
       )}
-      <div className="small faint">
-        {tr('Eigene Plugins: Ordner mit')}{' '}<code>manifest.json</code> {tr('unter')}{' '}<code>/data/plugins/</code> {tr('ablegen und den Container neu starten (siehe docs/handbuch.md, „Plugins“).')}
-      </div>
+
+      {tab === 'installed' &&
+        (items === null ? (
+          <Spinner />
+        ) : items.length === 0 ? (
+          <div className="small faint">{tr('Keine Plugins installiert.')}</div>
+        ) : (
+          items.map((p) => {
+            const update = catalogById.get(p.id)
+            return (
+              <div key={p.id} className="row" style={{ alignItems: 'flex-start' }}>
+                <label className="feature-toggle grow">
+                  <input type="checkbox" checked={p.enabled} disabled={busy === p.id || !!p.error} onChange={(e) => void toggle(p, e.target.checked)} />
+                  <div>
+                    <strong>{tr(p.name)}</strong>{' '}
+                    <span className="small faint">
+                      {p.version}
+                      {p.builtin ? tr(' · mitgeliefert') : p.repo ? ` · ${p.repo}` : ''}
+                    </span>
+                    {p.description && <div className="small muted">{tr(p.description)}</div>}
+                    {(p.error || registry.errors[p.id]) && <div className="small" style={{ color: 'var(--danger)' }}>{p.error ?? registry.errors[p.id]}</div>}
+                  </div>
+                </label>
+                {update?.update && (
+                  <button className="btn small primary" disabled={busy === p.id} onClick={() => void install(update)}>
+                    {tr('Auf {version} aktualisieren', { version: update.version })}
+                  </button>
+                )}
+                {!p.builtin && (
+                  <button className="btn small" disabled={busy === p.id} onClick={() => void remove(p.id, p.name)}>
+                    {tr('Entfernen')}
+                  </button>
+                )}
+              </div>
+            )
+          })
+        ))}
+
+      {tab === 'catalog' && (
+        <>
+          <div className="row">
+            <input className="input grow" placeholder={tr('Plugins suchen …')} value={filter} onChange={(e) => setFilter(e.target.value)} />
+            <button className="btn small" disabled={loadingCatalog} onClick={() => void loadCatalog(true)}>
+              {tr('Neu prüfen')}
+            </button>
+          </div>
+          {catalog === null ? (
+            <Spinner />
+          ) : shown.length === 0 ? (
+            <div className="small faint">{tr('Keine Plugins gefunden.')}</div>
+          ) : (
+            shown.map((c) => (
+              <div key={c.id} className="row" style={{ alignItems: 'flex-start' }}>
+                <div className="grow">
+                  <strong>{tr(c.name)}</strong>{' '}
+                  <span className="small faint">
+                    {c.version}
+                    {c.author ? ` · ${c.author}` : ''} · {c.repo}
+                  </span>{' '}
+                  <span className={`chip ${c.official ? 'accent' : ''}`}>{c.official ? tr('Offiziell') : tr('Eigenes Repo')}</span>
+                  {c.description && <div className="small muted">{tr(c.description)}</div>}
+                  {!c.compatible && <div className="small" style={{ color: 'var(--danger)' }}>{tr('Braucht BasaltNotes {version} oder neuer.', { version: c.min_app })}</div>}
+                </div>
+                {c.builtin ? (
+                  <span className="small faint">{tr('mitgeliefert')}</span>
+                ) : c.installed && !c.update ? (
+                  <span className="small faint">{tr('Installiert')}</span>
+                ) : (
+                  <button className="btn small primary" disabled={busy === c.id || !c.compatible} onClick={() => (c.update ? void install(c) : setConfirm(c))}>
+                    {c.update ? tr('Auf {version} aktualisieren', { version: c.version }) : tr('Installieren')}
+                  </button>
+                )}
+              </div>
+            ))
+          )}
+        </>
+      )}
+
+      {tab === 'repos' && (
+        <>
+          <p className="small muted" style={{ margin: 0 }}>
+            {tr('Eigene Repos: ein GitHub-Repo mit')}{' '}<code>catalog.json</code> {tr('oder')}{' '}<code>manifest.json</code> {tr('und einem Release mit .tar.gz-Paket.')}
+          </p>
+          {(catalog?.repos ?? []).map((r) => (
+            <div key={r.repo} className="row">
+              <span className="grow">
+                <code>{r.repo}</code>{' '}
+                {r.official && <span className="chip accent">{tr('Offiziell')}</span>}{' '}
+                {r.error ? <span className="small" style={{ color: 'var(--danger)' }}>{r.error}</span> : <span className="small faint">{tr('{x} Plugins', { x: r.count })}</span>}
+              </span>
+              {!r.official && (
+                <button className="btn small" disabled={busy === 'repo'} onClick={() => void removeRepo(r.repo)}>
+                  {tr('Austragen')}
+                </button>
+              )}
+            </div>
+          ))}
+          <div className="row">
+            <input className="input grow" placeholder="https://github.com/name/repo" value={repoUrl} onChange={(e) => setRepoUrl(e.target.value)} />
+            <button className="btn small primary" disabled={!repoUrl.trim() || busy === 'repo'} onClick={() => void addRepo()}>
+              {tr('Repo eintragen')}
+            </button>
+          </div>
+        </>
+      )}
+
+      {confirm && (
+        <Modal
+          title={tr('„{name}“ installieren?', { name: confirm.name })}
+          onClose={() => setConfirm(null)}
+          footer={
+            <button className="btn primary" onClick={() => void install(confirm)}>
+              {tr('Installieren')}
+            </button>
+          }
+        >
+          <div className="modal-body stack">
+            <div className="banner danger">{tr('Plugins laufen mit allen Rechten des Servers und können alle Notizen lesen und ändern. Pakete werden nicht geprüft oder signiert. Installiere nur, was du aus einer Quelle kennst, der du vertraust.')}</div>
+            <div className="small muted">
+              {tr('Quelle:')}{' '}<a href={`https://github.com/${confirm.repo}`} target="_blank" rel="noreferrer">github.com/{confirm.repo}</a> · {confirm.version}
+            </div>
+          </div>
+        </Modal>
+      )}
     </section>
   )
 }

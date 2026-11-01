@@ -1,0 +1,12 @@
+{
+  "id": "dnd",
+  "name": "D&D",
+  "version": "1.0.0",
+  "description": "Für Pen-&-Paper-Runden: Kampagnen mit Startseite und Timeline, Spieler-Sicht und Spieler-Konten, Vorlage mit Sessions, NPCs, Orten und Quests, Kurator-Regeln und ein Beispiel-Vault.",
+  "author": "BasaltNotes",
+  "server": "dist/server.js",
+  "auto_enable_presets": [
+    "dnd"
+  ],
+  "web": "dist/web.js"
+}

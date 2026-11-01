@@ -5,6 +5,7 @@ import { Db } from '../db.js'
 import { EventBus } from '../events.js'
 import { ApiError, invalid, notFound } from '../lib/errors.js'
 import { slugify, toPosix, versionOf } from '../lib/util.js'
+import { getPreset, type PresetDef } from './presets.js'
 import { Vault } from './vault.js'
 
 export class VaultManager {
@@ -22,8 +23,7 @@ export class VaultManager {
     fs.mkdirSync(this.root, { recursive: true })
     const dirs = fs.readdirSync(this.root, { withFileTypes: true }).filter((d) => d.isDirectory() && !d.name.startsWith('.'))
     if (!dirs.length) {
-      // Erster Start: Standard-Vaults anlegen
-      await this.create('DnD', 'dnd')
+      // Erster Start: Standard-Vault anlegen
       await this.create('Notizen', 'notes')
       return
     }
@@ -64,7 +64,7 @@ export class VaultManager {
   async create(name: string, preset: string, lang: 'de' | 'en' = 'de'): Promise<Vault> {
     const clean = (name ?? '').trim()
     if (!clean) throw invalid('Name fehlt.')
-    if (!['dnd', 'notes', 'empty'].includes(preset)) throw invalid('Unbekannte Vorlage (dnd, notes, empty).')
+    if (!getPreset(preset)) throw invalid('Unbekannte Vorlage.')
     const id = slugify(clean)
     if (!id) throw invalid('Ungültiger Name.')
     if (this.vaults.has(id) || fs.existsSync(path.join(this.root, id))) throw new ApiError('conflict', 'Ein Vault mit diesem Namen existiert bereits.')
@@ -72,6 +72,15 @@ export class VaultManager {
     Vault.initialize(dir, clean, preset, lang)
     const v = await this.openVault(id)
     this.events.emit('vault.created', id, { name: clean, preset })
+    return v
+  }
+
+  /** Beispiel-Vault einer Vorlage anlegen und mit Notizen füllen */
+  async createExample(preset: PresetDef): Promise<Vault> {
+    if (!preset.example) throw notFound('Beispiel-Vault')
+    const v = await this.create(preset.example.name, preset.id)
+    for (const n of preset.example.notes) await v.createNote({ type: n.type, title: n.title, frontmatter: n.frontmatter ?? {}, body: n.body })
+    await v.flushCommit('Beispiel-Vault angelegt')
     return v
   }
 

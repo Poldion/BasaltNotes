@@ -23,7 +23,8 @@ import {
   headings,
   type BlockInput,
 } from './markdown.js'
-import { ADDED_TYPES, COMMON_PROPS, DEFAULT_CURATOR, DND_TYPES, EMPTY_TYPES, NOTES_TYPES, PRESET_TYPES, PRESET_REVISION, TEMPLATES, presetConfig, presetYaml, type PropDef, type TypeDef, type VaultConfig } from './presets.js'
+import { profileOf } from './profiles.js'
+import { COMMON_PROPS, DEFAULT_CURATOR, getPreset, PRESET_REVISION, presetConfig, presetYaml, templateFor, type PropDef, type TypeDef, type VaultConfig } from './presets.js'
 
 export interface Note {
   id: string
@@ -132,7 +133,8 @@ export class Vault {
     for (const [typeName, t] of Object.entries(cfg.types)) {
       if (!t.template) continue
       const file = path.join(dir, '.basalt', 'templates', `${t.template}.md`)
-      if (!fs.existsSync(file) && TEMPLATES[t.template]) writeFileAtomic(file, TEMPLATES[t.template])
+      const text = templateFor(t.template)
+      if (!fs.existsSync(file) && text) writeFileAtomic(file, text)
       void typeName
     }
   }
@@ -147,30 +149,34 @@ export class Vault {
       }
     }
     const preset = raw.preset ?? 'dnd'
-    const base = preset === 'notes' ? NOTES_TYPES : preset === 'empty' ? EMPTY_TYPES : DND_TYPES
+    // Vorlage fehlt (z. B. Plugin entfernt): Typen aus vault.yaml reichen, nichts geht verloren
+    const def = getPreset(preset)
+    const base: Record<string, TypeDef> = def?.types ?? {}
     // Neue Standardtypen in ältere Vaults übernehmen (einmalig je Revision)
     if (raw.types && (raw.preset_revision ?? 1) < PRESET_REVISION) {
       const doc = YAML.parseDocument(fs.readFileSync(this.configFile, 'utf8'))
       for (let rev = (raw.preset_revision ?? 1) + 1; rev <= PRESET_REVISION; rev++) {
-        for (const name of ADDED_TYPES[rev]?.[preset] ?? []) {
-          const def = (base as Record<string, TypeDef>)[name]
-          if (!def || raw.types[name]) continue
-          const { properties: _p, label: _l, ...rest } = def
+        for (const name of def?.added_types?.[rev] ?? []) {
+          const added = base[name]
+          if (!added || raw.types[name]) continue
+          const { properties: _p, label: _l, ...rest } = added
           doc.setIn(['types', name], rest)
           raw.types[name] = rest
-          if (def.template) {
-            const tf = path.join(this.dir, '.basalt', 'templates', `${def.template}.md`)
-            if (!fs.existsSync(tf) && TEMPLATES[def.template]) writeFileAtomic(tf, TEMPLATES[def.template])
+          if (added.template) {
+            const tf = path.join(this.dir, '.basalt', 'templates', `${added.template}.md`)
+            const text = templateFor(added.template)
+            if (!fs.existsSync(tf) && text) writeFileAtomic(tf, text)
           }
         }
       }
-      doc.set('preset_revision', PRESET_REVISION)
+      // Ohne geladene Vorlage die Revision nicht hochzählen, sonst fehlen die Typen später
+      if (def) doc.set('preset_revision', PRESET_REVISION)
       writeFileAtomic(this.configFile, doc.toString({ lineWidth: 0 }))
     }
     const types: Record<string, TypeDef> = {}
     const fileTypes: Record<string, TypeDef> = raw.types ?? base
     for (const [k, t] of Object.entries(fileTypes)) {
-      const b = (base as Record<string, TypeDef>)[k] ?? {}
+      const b = base[k] ?? {}
       types[k] = { ...b, ...(t ?? {}), properties: (t as TypeDef)?.properties ?? b.properties ?? [] }
     }
     if (!types.note) types.note = { label: 'Notiz', folder: '', properties: [] }
@@ -178,7 +184,7 @@ export class Vault {
       name: raw.name ?? this.id,
       preset,
       types,
-      curator: { ...DEFAULT_CURATOR, profile: preset === 'dnd' ? 'dnd' : 'notes', ...(raw.curator ?? {}) },
+      curator: { ...DEFAULT_CURATOR, ...(def?.curator ?? {}), ...(raw.curator ?? {}) },
     }
     return this.config
   }
@@ -240,7 +246,7 @@ export class Vault {
     const t = this.config.types[type]?.template
     if (!t) return null
     const file = path.join(this.dir, '.basalt', 'templates', `${t}.md`)
-    return fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : (TEMPLATES[t] ?? null)
+    return fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : (templateFor(t) ?? null)
   }
 
   typesSchema() {
@@ -250,9 +256,9 @@ export class Vault {
       folder: t.folder ?? '',
       template: t.template ?? null,
       single_note: t.single_note ?? null,
-      builtin: !!(PRESET_TYPES[this.config.preset ?? '']?.[name]),
-      // Sichtbarkeit (DM/Spieler) gibt es nur in D&D-Vaults
-      properties: [...(t.properties ?? []), ...COMMON_PROPS.filter((p) => p.name !== 'visibility' || this.config.curator.profile === 'dnd')],
+      builtin: !!getPreset(this.config.preset)?.types[name],
+      // Sichtbarkeit nur, wenn das Profil eine eingeschränkte Sicht kennt
+      properties: [...(t.properties ?? []), ...COMMON_PROPS.filter((p) => p.name !== 'visibility' || profileOf(this)?.restrictedView)],
     }))
   }
 
@@ -637,7 +643,7 @@ export class Vault {
   templateBody(template: string | undefined, vars: Record<string, string>): string {
     if (!template) return `# ${vars.title}\n\n`
     const file = path.join(this.dir, '.basalt', 'templates', `${template}.md`)
-    const text = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : (TEMPLATES[template] ?? `# {{title}}\n\n`)
+    const text = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : (templateFor(template) ?? `# {{title}}\n\n`)
     return text.replace(/\{\{(\w+)\}\}/g, (_m, k) => vars[k] ?? '')
   }
 

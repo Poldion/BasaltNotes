@@ -14,7 +14,7 @@ import { createRequire } from 'node:module'
 import * as esbuild from 'esbuild'
 
 /** Namen, die die App unter globalThis.basalt.sdk bereitstellt */
-export const WEB_SDK_EXPORTS = ['api', 'enc', 'qs', 'useApp', 'useTypes', 'useVaultEvents', 'Modal', 'Spinner', 'TypeDot', 'relTime', 'fmtDate', 'fmtDateTime', 'tr', 'lang', 'locale', 'Icon']
+export const WEB_SDK_EXPORTS = ['api', 'enc', 'qs', 'useApp', 'useTypes', 'useVaultEvents', 'Modal', 'Spinner', 'TypeDot', 'relTime', 'fmtDate', 'fmtDateTime', 'tr', 'lang', 'locale', 'Icon', 'embedNavigate', 'slugify']
 
 const IDENT = /^[A-Za-z_$][\w$]*$/
 

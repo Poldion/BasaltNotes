@@ -24,18 +24,18 @@ Every change is a git commit and can be undone.
 
 | Area | What it does |
 |---|---|
-| **Notes** | Markdown + YAML frontmatter, stable IDs, types with folders, templates and properties – for D&D (campaign, session, NPC, location, quest …) and everyday life (journal, task, recipe …), plus your own types |
+| **Notes** | Markdown + YAML frontmatter, stable IDs, types with folders, templates and properties – from a free notebook to everyday life (journal, task, recipe …) |
 | **Editor** | CodeMirror 6 with live preview, `[[` autocomplete incl. aliases, image paste, autosave, conflict detection |
-| **Vaults** | Free (just notes, folders as you like – like Obsidian) or with a template for D&D or everyday life; an example vault with a fictional campaign to try things out |
+| **Vaults** | Free (just notes, folders as you like – like Obsidian) or with a template; plugins bring more templates |
 | **Linking** | Backlinks with context, renaming updates all links, graph view, “link mentions” without AI |
-| **Search** | Full text (SQLite FTS5), filters by type, campaign, tag and property, quick switcher, Dataview-like queries |
+| **Search** | Full text (SQLite FTS5), filters by type, tag and property, quick switcher, Dataview-like queries |
 | **AI curator** | Recognise → match → plan → apply or propose (with diff), rules per vault, dry run, “undo run” |
 | **Ask** | Chat with your notes; matching entries are pre-selected without the LLM – built for small local models |
 | **Documents** | Upload PDF, Word, text and Markdown to the inbox; the text is extracted and filed |
-| **Campaigns** | Home page with “previously on”, timeline, open quests, characters, player view |
+| **D&D** (plugin) | Campaigns with home page and timeline, player view and player accounts, its own curator rules, template and example vault – built in, switched on when needed |
 | **History** | git commit per save, diff and restore per note, trash, ZIP export |
-| **Plugins** | Extensions with a server and a UI part; Calendar & CalDAV (also for Home Assistant) ships built in |
-| **Users** | Roles (admin, edit, read, player), vault access per account, API tokens with per-vault permissions |
+| **Plugins** | Extensions with a server and a UI part; install and update from the catalog or your own GitHub repos; Calendar & CalDAV (also for Home Assistant) ships built in |
+| **Users** | Admin or member with an access level per vault, API tokens with per-vault permissions |
 | **Integration** | REST API with OpenAPI, server-sent events, signed webhooks, iframe embeds, JS SDK |
 | **Interface** | English and German, light/dark, works down to phone width, installable as a PWA |
 

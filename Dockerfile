@@ -10,12 +10,13 @@ COPY web/package.json web/
 COPY packages/client/package.json packages/client/
 COPY packages/plugin-sdk/package.json packages/plugin-sdk/
 COPY plugins/calendar/package.json plugins/calendar/
+COPY plugins/dnd/package.json plugins/dnd/
 RUN npm ci --no-audit --no-fund
 COPY server server
 COPY web web
 COPY packages/plugin-sdk packages/plugin-sdk
 COPY plugins plugins
-RUN npm run build --workspace server && npm run build --workspace web && npm run build --workspace plugins/calendar
+RUN npm run build --workspace server && npm run build --workspace web && npm run build --workspace plugins/calendar && npm run build --workspace plugins/dnd
 
 # ---------- Laufzeit ----------
 FROM node:24-bookworm-slim
@@ -52,12 +53,15 @@ COPY web/package.json web/
 COPY packages/client/package.json packages/client/
 COPY packages/plugin-sdk/package.json packages/plugin-sdk/
 COPY plugins/calendar/package.json plugins/calendar/
+COPY plugins/dnd/package.json plugins/dnd/
 RUN npm ci --omit=dev --no-audit --no-fund --workspace server && npm cache clean --force
 COPY --from=build /app/server/dist server/dist
 COPY --from=build /app/web/dist web/dist
 # Mitgelieferte Plugins: nur Manifest und gebaute Dateien
 COPY --from=build /app/plugins/calendar/manifest.json plugins/calendar/manifest.json
 COPY --from=build /app/plugins/calendar/dist plugins/calendar/dist
+COPY --from=build /app/plugins/dnd/manifest.json plugins/dnd/manifest.json
+COPY --from=build /app/plugins/dnd/dist plugins/dnd/dist
 
 COPY docker/entrypoint.sh /usr/local/bin/basalt-entrypoint
 RUN chmod 755 /usr/local/bin/basalt-entrypoint \

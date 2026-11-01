@@ -75,7 +75,8 @@ describe('Eigene Vaults per create_vault', () => {
     const t = await token({ name: 'viel', scopes: ['create_vault'] })
     for (let i = 0; i < 20; i++) expect((await req('POST', `${A}/vaults`, { name: `Viel ${i}` }, t)).status).toBe(201)
     expect((await req('POST', `${A}/vaults`, { name: 'Viel 20' }, t)).status).toBe(403)
-  })
+    // 20 Vaults mit je einem git-Repo dauern unter Last länger als das Standardlimit
+  }, 60_000)
 
   it('Eigener Vault: Ordner aus vault.yaml oder Anfrage führen nicht aus dem Vault heraus', async () => {
     const t = await token({ name: 'pfad', scopes: ['create_vault'] })

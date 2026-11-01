@@ -1,3 +1,4 @@
+import { CHAT_GENERIC_WORDS, CHAT_TYPE_WORDS, profileOf } from '../notes/profiles.js'
 import type { AppConfig } from '../config.js'
 import { Db, json } from '../db.js'
 import type { LlmClient } from '../curator/llm.js'
@@ -82,23 +83,6 @@ const STOP = new Set(
   ).split(' '),
 )
 
-/** Wörter, an denen Übersichtsfragen nach einem Typ erkannt werden */
-const TYPE_WORDS: Record<string, string[]> = {
-  quest: ['quest', 'quests', 'aufgabe', 'aufgaben', 'auftrag', 'aufträge', 'mission', 'missionen'],
-  npc: ['npc', 'npcs', 'person', 'personen', 'leute', 'figur', 'figuren', 'nsc', 'nscs'],
-  character: ['charakter', 'charaktere', 'spielercharakter', 'spielercharaktere', 'held', 'helden', 'gruppe', 'party'],
-  location: ['ort', 'orte', 'stadt', 'städte', 'dorf', 'dörfer', 'gegend', 'gegenden', 'dungeon', 'dungeons'],
-  monster: ['monster', 'kreatur', 'kreaturen', 'gegner', 'feind', 'feinde'],
-  item: ['gegenstand', 'gegenstände', 'item', 'items', 'beute', 'loot', 'schatz', 'schätze', 'waffe', 'waffen', 'artefakt', 'artefakte'],
-  faction: ['fraktion', 'fraktionen', 'gilde', 'gilden', 'gruppierung', 'gruppierungen', 'orden'],
-  session: ['session', 'sessions', 'sitzung', 'sitzungen', 'spielabend', 'spielabende'],
-  script: ['skript', 'skripte', 'vorbereitung', 'vorbereitungen'],
-  person: ['person', 'personen', 'kontakt', 'kontakte'],
-  project: ['projekt', 'projekte'],
-  meeting: ['meeting', 'meetings', 'besprechung', 'besprechungen', 'termin', 'termine'],
-  task: ['aufgabe', 'aufgaben', 'todo', 'todos'],
-}
-const GENERIC_WORDS = new Set([...Object.values(TYPE_WORDS).flat(), 'kampagne', 'kampagnen', 'teil', 'kapitel', 'notiz', 'notizen', 'skript', 'recap', 'recaps'])
 const LIST_HINT = /\b(welche[rsnm]?|alle|liste|übersicht|wie ?viele|offene?n?|erledigte?n?|gibt es)\b/i
 
 /** Fragen nach Verlauf/Stand („Was ist der aktuelle Stand?“, „Was ist zuletzt passiert?“) */
@@ -371,7 +355,7 @@ export class ChatService {
       if (nw.length > 1) {
         meaningful.forEach((w, k) => {
           // Gattungswörter („Session“ in „2026-10-10 Session 3“, „Quest“, „Ort“) machen keinen Namen aus
-          if (w.length < 4 || GENERIC_WORDS.has(w) || /^\d+$/.test(w)) return
+          if (w.length < 4 || CHAT_GENERIC_WORDS.has(w) || /^\d+$/.test(w)) return
           const t = content.find((x) => wordEq(x.w, w))
           if (t) return put({ ...base, score: k === 0 ? 0.8 : 0.65, span: [t.i, t.i + 1] })
           // … auch mit Tippfehler („Muffelgallerte“ für „Muffgallerte jagen“)
@@ -409,7 +393,7 @@ export class ChatService {
     const words = tokenize(question).map((t) => t.w)
     const types = new Set<string>()
     for (const [type, def] of Object.entries(v.config.types)) {
-      const list = [...(TYPE_WORDS[type] ?? []), ...tokenize(def.label ?? '').map((t) => t.w).filter((w) => w.length >= 3 && !STOP.has(w))]
+      const list = [...(CHAT_TYPE_WORDS[type] ?? []), ...tokenize(def.label ?? '').map((t) => t.w).filter((w) => w.length >= 3 && !STOP.has(w))]
       if (list.some((tw) => words.some((w) => wordEq(w, tw)))) types.add(type)
     }
     return [...types]
@@ -727,9 +711,8 @@ export class ChatService {
   }
 
   private systemPrompt(v: Vault, players: boolean, timeline = false): string {
-    const dnd = v.config.preset === 'dnd'
     return [
-      `Du beantwortest Fragen zu ${dnd ? 'den Notizen einer Pen-&-Paper-Kampagne (D&D)' : 'persönlichen Notizen'}.`,
+      `Du beantwortest Fragen zu ${profileOf(v)?.chatSubject ?? 'persönlichen Notizen'}.`,
       'Regeln:',
       '- Nutze ausschließlich die Informationen unter NOTIZEN. Erfinde nichts dazu.',
       '- Steht die Antwort nicht in den Notizen, sage das in einem Satz.',
@@ -738,7 +721,7 @@ export class ChatService {
       timeline
         ? '- Die Sessions sind zeitlich geordnet. Der aktuelle Stand ergibt sich aus der NEUESTEN Session; ältere Sessions und Chroniken sind Vorgeschichte. Vorbereitete Skripte sind nicht unbedingt gespielt. Ob etwas noch offen ist, entscheidet der Quest-Status und der Hinweis „→ …“ hinter offenen Punkten – nenne erledigte Punkte nicht als offen.'
         : '',
-      players ? '- Du sprichst mit Spielenden: gib nur wieder, was in den Notizen steht.' : '',
+      players ? '- Du sprichst mit jemandem mit eingeschränkter Sicht: gib nur wieder, was in den Notizen steht.' : '',
     ]
       .filter(Boolean)
       .join('\n')

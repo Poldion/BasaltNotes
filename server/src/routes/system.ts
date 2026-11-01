@@ -202,7 +202,7 @@ export const registerSystem: Register = (app: FastifyInstance, s: Services) => {
       campaign: p.campaign ?? null,
       csrf: p.csrf ?? null,
       embed_origins: s.config.embedOrigins,
-      roles: ROLES.map((r) => ({ name: r, label: ROLE_LABELS[r] })),
+      roles: s.plugins!.availableRoles().map((r) => ({ name: r, label: ROLE_LABELS[r] })),
       features: s.config.features,
     }
   })
@@ -258,11 +258,12 @@ export const registerSystem: Register = (app: FastifyInstance, s: Services) => {
 
   app.get('/users', { schema: { tags: T.system, summary: 'Benutzer (nur admin)' } }, async (req) => {
     requireScope(req, 'admin')
-    return { items: s.auth.listUsers(), roles: ROLES.map((r) => ({ name: r, label: ROLE_LABELS[r], scopes: ROLE_SCOPES[r] })) }
+    return { items: s.auth.listUsers(), roles: s.plugins!.availableRoles().map((r) => ({ name: r, label: ROLE_LABELS[r], scopes: ROLE_SCOPES[r] })) }
   })
 
   app.post('/users', { schema: { tags: T.system, summary: 'Benutzer anlegen {username, password, role, grants? (Rolle member), vaults?, campaign?, display_name?}', body: { ...userBody, required: ['username', 'password', 'role'] } } }, async (req, reply) => {
     requireScope(req, 'admin')
+    if (!s.plugins!.availableRoles().includes((req.body as any).role)) throw invalid('Unbekannte Rolle.')
     for (const g of (req.body as any).grants ?? []) if (g?.vault !== '*') s.vaults.get(String(g?.vault ?? ''))
     reply.code(201)
     return s.auth.createUser(req.body as any)

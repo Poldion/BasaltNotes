@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { Route, Routes, useNavigate, useParams } from 'react-router-dom'
 import { useApp, type Theme } from '../lib/state'
 import { NotePage } from './NotePage'
-import { CampaignPage } from './CampaignPage'
+import { registry } from '../lib/plugins'
 import { SearchPage } from './SearchPage'
 import { ProposalsPage } from './ProposalsPage'
 import { GraphPage } from './GraphPage'
@@ -59,7 +59,11 @@ export function EmbedRoutes() {
   return (
     <Routes>
       <Route path="/embed/:vault/note/:id" element={<EmbedShell><EmbedNote /></EmbedShell>} />
-      <Route path="/embed/:vault/campaign/:campaign" element={<EmbedShell><CampaignPage embedded /></EmbedShell>} />
+      {registry.pages
+        .filter((pg) => pg.embed && pg.scope === 'vault')
+        .map((pg) => (
+          <Route key={`${pg.plugin}:${pg.path}`} path={`/embed/:vault/${pg.path}/*`} element={<EmbedShell><pg.component /></EmbedShell>} />
+        ))}
       <Route path="/embed/:vault/search" element={<EmbedShell><SearchPage embedded /></EmbedShell>} />
       <Route path="/embed/:vault/proposals" element={<EmbedShell><ProposalsPage embedded /></EmbedShell>} />
       <Route path="/embed/:vault/graph" element={<EmbedShell><GraphPage embedded /></EmbedShell>} />

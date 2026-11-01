@@ -228,6 +228,23 @@ BasaltNotes can be extended with plugins. The **calendar including CalDAV** is a
 serves as an example: [`plugins/calendar`](../plugins/calendar).
 Switch on and off: Settings → Plugins (takes effect immediately, the page reloads).
 
+**D&D** is a built-in plugin as well: campaigns, player view and player accounts, the D&D template, the curator's rules and the
+example vault. It is off on a new installation. As long as a vault uses the `dnd` template it is on automatically, so existing
+vaults keep working without any step. If you switch it off, notes and types stay and existing player accounts stay restricted;
+only the campaign pages and new D&D vaults and player accounts go away.
+
+### Catalog: installing and updating plugins
+
+Settings → Plugins → **Catalog** lists the plugins of all registered repos, much like HACS in Home Assistant. The official repo
+[`Poldion/BasaltNotes-Plug`](https://github.com/Poldion/BasaltNotes-Plug) is preconfigured. Add any GitHub repo under **Repos**.
+New versions show up as updates under **Installed**.
+
+- Only people who administer the server can do this.
+- UI-only plugins take effect after the automatic page reload, plugins with a server part after a server restart (the UI tells you).
+- Packages are **neither reviewed nor signed**. Plugins run with all the server's rights, so only install from sources you trust.
+
+How to build your own repo: see the [plugin repo's README](https://github.com/Poldion/BasaltNotes-Plug#readme).
+
 **Structure** – a folder with `manifest.json`:
 
 ```json
@@ -273,12 +290,21 @@ import { buildPlugin } from '@basaltnotes/plugin-sdk/build'
 await buildPlugin({ root: import.meta.dirname, server: 'src/server.ts', web: 'src/web.tsx', styles: 'src/web.css' })
 ```
 
+**More extension points:** the server module can also bring `presets` (templates for new vaults), `profiles` (rules for curator,
+inbox and chat) and `roles` (roles for accounts); the UI module can add sections to a notebook's home page with
+`registerHomeSection`. Complete example: [`plugins/dnd`](../plugins/dnd).
+
 Plugins run with the app's privileges (server) or those of the signed-in person (UI) – only install plugins you trust.
 
 | Method | Path | Scope | Purpose |
 |---|---|---|---|
 | GET | `/plugins` | signed in | Installed plugins `{id, name, version, description, builtin, enabled, error, web, styles}` |
-| PUT | `/plugins/{id}` | admin | Switch on/off `{enabled}` |
+| PUT | `/plugins/{id}` | server admin | Switch on/off `{enabled}` |
+| GET | `/plugins/catalog` | server admin | Catalog of all repos with installed state and updates (`?refresh=1`) |
+| POST | `/plugins/install` | server admin | Install or update from the catalog `{id}` |
+| DELETE | `/plugins/{id}` | server admin | Remove an installed plugin |
+| POST / DELETE | `/plugins/repos` | server admin | Add or remove a custom GitHub repo `{url}` |
+| GET | `/presets` | signed in | Templates for new vaults (core and enabled plugins) |
 | GET | `/plugins/{id}/<file>` (without `/api/v1`) | – | UI files (only from the folder of `web`/`styles`) |
 
 ---

@@ -26,6 +26,8 @@ export interface PluginManifest {
   default_enabled?: boolean
   /** Zusätzliche HTTP-Methoden, die das Plugin braucht (z. B. PROPFIND, REPORT für CalDAV) */
   http_methods?: string[]
+  /** Automatisch an, solange ein Vault eine dieser Vorlagen benutzt */
+  auto_enable_presets?: string[]
 }
 
 export interface PropDef {
@@ -41,6 +43,23 @@ export interface TypeDef {
   folder?: string
   template?: string
   properties?: PropDef[]
+}
+
+/** Vorlage für neue Vaults */
+export interface PresetDef {
+  id: string
+  label: string
+  description?: string
+  types: Record<string, TypeDef & { single_note?: string; section?: string; defaults?: Record<string, unknown> }>
+  /** Vorlagentexte, Schlüssel wie TypeDef.template */
+  templates?: Record<string, string>
+  curator?: { section?: string; profile?: string; mode?: 'full' | 'link' }
+  /** Typen, die mit einer Revision hinzugekommen sind */
+  added_types?: Record<number, string[]>
+  /** Englische Ordnernamen */
+  folders_en?: Record<string, string>
+  /** Beispiel-Vault zum Ausprobieren */
+  example?: { name: string; description?: string; notes: { type: string; title: string; frontmatter?: Record<string, unknown>; body: string }[] }
 }
 
 export interface NoteRecord {
@@ -66,6 +85,8 @@ export interface VaultApi {
   config: { name: string; preset?: string; types: Record<string, TypeDef> }
   readNote(id: string): NoteRecord | null
   getNote(id: string): NoteRecord
+  /** Notiz über Titel oder Alias finden */
+  resolveName(name: string, opts?: { type?: string; campaign?: string | null }): string | null
   folderFor(type: string, campaign: string | null | undefined, title: string, when?: Date): string
   createNote(input: { type?: string; title: string; frontmatter?: Record<string, any>; body?: string; folder?: string }): Promise<NoteRecord>
   replaceNote(id: string, input: { raw?: string; frontmatter?: Record<string, any>; body?: string }, ifMatch: string | undefined): Promise<NoteRecord>
@@ -107,6 +128,14 @@ export interface PluginHelpers {
   noteFor(req: FastifyRequest, v: VaultApi, id: string): NoteRecord
   requireScope(req: FastifyRequest, scope: Scope, vault?: string): void
   accessOf(req: FastifyRequest, vaultId: string): Restriction
+  /** Sicht der Anfrage: 'players' = eingeschränkt */
+  visibilityOf(req: FastifyRequest): 'dm' | 'players' | undefined
+  slugify(s: string): string
+  /** Bereiche mit visibility="dm" entfernen */
+  stripDmBlocks(body: string): string
+  stripBlockMarkers(body: string): string
+  listBlocks(body: string): any[]
+  headings(body: string): any[]
   isAreaRestricted(req: FastifyRequest, vaultId: string): boolean
   assertInArea(req: FastifyRequest, v: VaultApi, note: { campaign: string | null; path: string; type: string }): void
   /** SQL-Bedingungen für den Bereich (Alias n), Parameter werden an params angehängt */
@@ -123,6 +152,45 @@ export interface PluginHelpers {
   appendTask(body: string, text: string, checked?: boolean): string
   /** Fehler im Format der API (wird als {error: {code, message}} beantwortet) */
   error(code: 'not_found' | 'validation_error' | 'forbidden' | 'conflict' | 'unauthorized', message: string, details?: Record<string, unknown>): Error
+}
+
+export interface ProfileContext {
+  v: VaultApi
+  db: DbApi
+  slugify(s: string): string
+}
+
+/** Regelwerk eines Vaults für Kurator, Eingang und Chat (vault.yaml: curator.profile) */
+export interface VaultProfile {
+  id: string
+  /** Typen, die der Kurator nicht als Einträge erkennt */
+  nonEntityTypes?: string[]
+  /** Bei widersprüchlichen Typen für denselben Namen gewinnt der frühere */
+  entityRank?: string[]
+  /** Neue Einträge gehören zur Gruppe des Eingangs (Feld campaign) */
+  scoped?: boolean
+  /** Es gibt eine eingeschränkte Sicht (Feld visibility, Bereiche mit visibility="dm") */
+  restrictedView?: boolean
+  systemPrompt?(c: { group: string | null | undefined; types: string; hasType(t: string): boolean; knownNames: string; hint: string }): string
+  sourceRules?(note: { type: string }): { hint?: string; restricted?: boolean } | null
+  excludedNames?(c: ProfileContext & { frontmatter?: Record<string, any>; group: string | null }): string[]
+  defaultInboxType?: string
+  resolveGroup?(c: ProfileContext & { name: string | null | undefined }): Promise<string | null>
+  inboxFrontmatter?(c: ProfileContext & { type: string; group: string | null; frontmatter: Record<string, any>; isNew: boolean }): void
+  documentDefaults?(c: { v: VaultApi; visibility?: 'dm' | 'players' }): { type?: string; visibility?: 'dm' | 'players' }
+  /** Worum es im Chat geht („Du beantwortest Fragen zu …“) */
+  chatSubject?: string
+  typeWords?: Record<string, string[]>
+  genericWords?: string[]
+}
+
+/** Rolle für Benutzerkonten */
+export interface RoleDef {
+  id: string
+  label: string
+  scopes: Scope[]
+  /** Nur eingeschränkte Sicht (visibility: players) */
+  restricted?: boolean
 }
 
 export interface ServerPluginContext {
@@ -145,6 +213,12 @@ export interface ServerPluginContext {
 }
 
 export interface ServerPlugin {
+  /** Vorlagen für neue Vaults */
+  presets?: PresetDef[]
+  /** Regelwerke für Kurator, Eingang und Chat */
+  profiles?: VaultProfile[]
+  /** Rollen für Benutzerkonten */
+  roles?: RoleDef[]
   /** Endpunkte unter /api/v1 – Anmeldung, CSRF und Freigaben gelten wie für den Kern */
   api?(app: FastifyInstance, ctx: ServerPluginContext): void | Promise<void>
   /** Endpunkte ab / (eigene Anmeldung nötig), z. B. /dav für CalDAV */

@@ -2,10 +2,7 @@
  * Beispiel-Vault zum Ausprobieren: eine kleine, frei erfundene D&D-Kampagne mit Sessions, NPCs, Orten, Quests
  * und Verknüpfungen – damit Graph, Backlinks, Kampagnenseite, Kalender und Chat sofort etwas zeigen.
  */
-import type { Vault } from './vault.js'
-import type { VaultManager } from './vaults.js'
-
-export const EXAMPLE_VAULT_NAME = 'Beispiel – Die Nebelküste'
+export const EXAMPLE_NAME = 'Beispiel – Die Nebelküste'
 const C = 'Die Nebelküste'
 
 interface Seed {
@@ -15,7 +12,7 @@ interface Seed {
   body: string
 }
 
-const NOTES: Seed[] = [
+const SEEDS: Seed[] = [
   {
     type: 'campaign',
     title: C,
@@ -256,12 +253,9 @@ Die Gruppe erreicht das [[Leuchtfeuer von Velm]] und findet den gefangenen Wärt
   },
 ]
 
-/** Beispiel-Vault anlegen (Vorlage D&D) und mit Notizen füllen */
-export async function createExampleVault(vaults: VaultManager): Promise<Vault> {
-  const v = await vaults.create(EXAMPLE_VAULT_NAME, 'dnd')
-  for (const n of NOTES) {
-    await v.createNote({ type: n.type, title: n.title, frontmatter: { ...(n.type === 'campaign' ? {} : { campaign: C }), ...(n.fm ?? {}) }, body: n.body })
-  }
-  await v.flushCommit('Beispiel-Vault angelegt')
-  return v
-}
+export const NOTES = SEEDS.map((n) => ({
+  type: n.type,
+  title: n.title,
+  frontmatter: { ...(n.type === 'campaign' ? {} : { campaign: C }), ...(n.fm ?? {}) },
+  body: n.body,
+}))

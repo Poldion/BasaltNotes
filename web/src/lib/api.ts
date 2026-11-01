@@ -125,6 +125,8 @@ export interface VaultInfo {
   id: string
   name: string
   preset: string
+  /** Das Profil des Vaults kennt eine eingeschränkte Sicht */
+  restricted_view?: boolean
   note_count: number
   types: string[]
   curator: { enabled: boolean; profile: string; mode: 'full' | 'link' }

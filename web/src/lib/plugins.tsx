@@ -4,7 +4,8 @@ import * as ReactRouterDom from 'react-router-dom'
 import type { ComponentType } from 'react'
 import { api, enc, qs } from './api'
 import { useApp, useTypes, useVaultEvents } from './state'
-import { Modal, Spinner, TypeDot, fmtDate, fmtDateTime, relTime } from './ui'
+import { Modal, Spinner, TypeDot, fmtDate, fmtDateTime, relTime, slugify } from './ui'
+import { embedNavigate } from '../pages/NotePage'
 import { addTranslations, lang, locale, tr, type Lang } from './i18n'
 import { Icon } from '../components/Icon'
 
@@ -21,6 +22,7 @@ export interface PluginInfo {
   description: string | null
   author: string | null
   builtin: boolean
+  repo: string | null
   enabled: boolean
   error: string | null
   web: string | null
@@ -32,6 +34,14 @@ export interface PluginPage {
   path: string
   scope: 'vault' | 'global'
   component: ComponentType
+  embed?: boolean
+}
+
+export interface PluginHomeSection {
+  plugin: string
+  id: string
+  order?: number
+  component: ComponentType<{ vault: string }>
 }
 
 export interface PluginNav {
@@ -56,29 +66,34 @@ export const registry = {
   pages: [] as PluginPage[],
   nav: [] as PluginNav[],
   settings: [] as PluginSettings[],
+  home: [] as PluginHomeSection[],
   loaded: [] as PluginInfo[],
   errors: {} as Record<string, string>,
 }
 
 /** Pfade, die der Kern selbst benutzt – Plugins dürfen sie nicht belegen */
-const RESERVED = new Set(['note', 'search', 'chat', 'inbox', 'proposals', 'runs', 'campaign', 'graph', 'trash', 'settings', 'p'])
+const RESERVED = new Set(['note', 'search', 'chat', 'inbox', 'proposals', 'runs', 'graph', 'trash', 'settings', 'p'])
 
 function expose() {
   ;(globalThis as any).basalt = {
     React,
     jsxRuntime,
     ReactRouterDom,
-    sdk: { api, enc, qs, useApp, useTypes, useVaultEvents, Modal, Spinner, TypeDot, relTime, fmtDate, fmtDateTime, tr, lang, locale, Icon },
+    sdk: { api, enc, qs, useApp, useTypes, useVaultEvents, Modal, Spinner, TypeDot, relTime, fmtDate, fmtDateTime, tr, lang, locale, Icon, embedNavigate, slugify },
   }
 }
 
 function contextFor(id: string) {
   return {
     id,
-    registerPage(page: { path: string; scope?: 'vault' | 'global'; component: ComponentType }) {
+    registerPage(page: { path: string; scope?: 'vault' | 'global'; component: ComponentType; embed?: boolean }) {
       const path = page.path.replace(/^\/+|\/+$/g, '')
       if (!path || RESERVED.has(path.split('/')[0])) throw new Error(tr('Pfad „{path}“ ist nicht erlaubt', { path: page.path }))
-      registry.pages.push({ plugin: id, path, scope: page.scope ?? 'vault', component: page.component })
+      registry.pages.push({ plugin: id, path, scope: page.scope ?? 'vault', component: page.component, embed: page.embed })
+    },
+    registerHomeSection(section: Omit<PluginHomeSection, 'plugin'>) {
+      registry.home.push({ ...section, plugin: id })
+      registry.home.sort((a, b) => (a.order ?? 100) - (b.order ?? 100))
     },
     registerNav(item: Omit<PluginNav, 'plugin'>) {
       registry.nav.push({ ...item, plugin: id, path: item.path.replace(/^\/+/, '') })

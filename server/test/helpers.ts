@@ -68,6 +68,8 @@ export async function makeApp(llm: LlmClient, opts: { config?: Partial<import('.
     logger: false,
     webDir: null,
   })
+  // Der Kern legt nur „Notizen“ an; viele Tests arbeiten mit einem D&D-Vault
+  await services.vaults.create('DnD', 'dnd')
   const admin = services.auth.createToken({ name: 'test', vaults: '*', scopes: ['admin'] })
   const auth = { authorization: `Bearer ${admin.token}` }
   const cleanup = async () => {

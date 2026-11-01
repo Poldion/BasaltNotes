@@ -1,7 +1,7 @@
 {
   "name": "basaltnotes",
   "private": true,
-  "version": "0.24.0",
+  "version": "0.25.0",
   "license": "MIT",
   "description": "Self-hosted note-taking app in the spirit of Obsidian, with an optional AI curator that files new content for you",
   "repository": {
@@ -22,7 +22,7 @@
   "scripts": {
     "dev": "npm run dev --workspace server",
     "dev:web": "npm run dev --workspace web",
-    "build": "npm run build --workspace server && npm run build --workspace web && npm run build --workspace packages/client && npm run build --workspace plugins/calendar",
+    "build": "npm run build --workspace server && npm run build --workspace web && npm run build --workspace packages/client && npm run build --workspace plugins/calendar && npm run build --workspace plugins/dnd",
     "test": "npm test --workspace server",
     "start": "npm start --workspace server",
     "i18n:check": "node scripts/i18n-check.mjs"

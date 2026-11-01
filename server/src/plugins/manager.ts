@@ -2,14 +2,18 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { FastifyInstance, FastifyRequest } from 'fastify'
-import { requireScope, type Scope } from '../auth.js'
+import { isServerAdmin, PLUGIN_ROLES, registerRole, requireScope, ROLES, type RoleDef, type Scope } from '../auth.js'
+import { compareVersions, PluginCatalog } from './catalog.js'
 import { readFileConfig, updateFileConfig } from '../config.js'
 import { json } from '../db.js'
 import { ApiError, invalid, notFound } from '../lib/errors.js'
-import { appendTask, listTasks, setTask } from '../notes/markdown.js'
+import { appendTask, headings, listBlocks, listTasks, setTask, stripBlockMarkers, stripDmBlocks } from '../notes/markdown.js'
+import { registerProfile, type VaultProfile } from '../notes/profiles.js'
+import { getPreset, listPresets, registerPreset, type PresetDef } from '../notes/presets.js'
 import { restrictionAllows, restrictSql } from '../notes/search.js'
 import { stripLink } from '../notes/vault.js'
-import { accessOf, allowAreaRoute, assertInArea, isAreaRestricted, noteFor, vaultFor, type Services } from '../routes/common.js'
+import { slugify } from '../lib/util.js'
+import { accessOf, allowAreaRoute, assertInArea, isAreaRestricted, noteFor, vaultFor, visibilityOf, type Services } from '../routes/common.js'
 
 /*
  * Plugins: Ordner mit manifest.json, optional Server-Modul (api/root) und Oberflächen-Modul (web).
@@ -28,9 +32,14 @@ export interface PluginManifest {
   styles?: string
   default_enabled?: boolean
   http_methods?: string[]
+  /** Automatisch an, solange ein Vault eine dieser Vorlagen benutzt (bis es jemand ausdrücklich umschaltet) */
+  auto_enable_presets?: string[]
 }
 
 interface ServerModule {
+  presets?: PresetDef[]
+  profiles?: VaultProfile[]
+  roles?: RoleDef[]
   api?: (app: FastifyInstance, ctx: any) => void | Promise<void>
   root?: (app: FastifyInstance, ctx: any) => void | Promise<void>
 }
@@ -42,6 +51,12 @@ export interface LoadedPlugin {
   module: ServerModule | null
   error: string | null
   ctx: any
+}
+
+/** Verwaltung von Plugins nur für Server-Admins: Plugins laufen mit allen Rechten des Servers */
+function requireServerAdmin(req: FastifyRequest) {
+  requireScope(req, 'admin')
+  if (!req.principal || !isServerAdmin(req.principal)) throw new ApiError('forbidden', 'Nur für Server-Admins.')
 }
 
 const ID_RE = /^[a-z][a-z0-9-]{1,40}$/
@@ -61,8 +76,13 @@ const MIME: Record<string, string> = {
 
 export class PluginManager {
   plugins: LoadedPlugin[] = []
+  catalog: PluginCatalog
+  /** Plugins, deren Server-Teil erst nach einem Neustart zum Stand auf der Platte passt */
+  private restartNeeded = new Set<string>()
 
-  constructor(private s: Services) {}
+  constructor(private s: Services) {
+    this.catalog = new PluginCatalog(s.config.dataDir, path.join(s.config.dataDir, 'plugins'))
+  }
 
   private userDir() {
     return path.join(this.s.config.dataDir, 'plugins')
@@ -77,6 +97,7 @@ export class PluginManager {
     ] as const) {
       if (!fs.existsSync(base)) continue
       for (const name of fs.readdirSync(base).sort()) {
+        if (name.startsWith('.')) continue
         const dir = path.join(base, name)
         const mf = path.join(dir, 'manifest.json')
         if (!fs.existsSync(mf)) continue
@@ -104,6 +125,11 @@ export class PluginManager {
             console.error(`[plugins] ${manifest.id}: ${p.error}`)
           }
         }
+        // Vorlagen auch ausgeschalteter Plugins kennen: Bestehende Vaults behalten so ihre Typen
+        for (const def of p.module?.presets ?? []) registerPreset({ ...def, plugin: manifest.id })
+        // Profile und Rollen ebenso: Bestehende Vaults und Konten dürfen nie mehr sehen als vorher
+        for (const def of p.module?.profiles ?? []) registerProfile(def)
+        for (const def of p.module?.roles ?? []) registerRole({ ...def, plugin: manifest.id })
         this.plugins.push(p)
       }
     }
@@ -132,7 +158,29 @@ export class PluginManager {
     const p = this.plugins.find((x) => x.manifest.id === id)
     if (!p || p.error) return false
     const st = this.stateOf(id)
-    return st.enabled ?? !!p.manifest.default_enabled
+    if (st.enabled !== undefined) return st.enabled
+    if (p.manifest.default_enabled) return true
+    // Vaults, die vor dem Umzug ins Plugin angelegt wurden, laufen ohne Zutun weiter
+    const auto = p.manifest.auto_enable_presets ?? []
+    return !!auto.length && this.s.vaults.list().some((v) => auto.includes(v.config.preset ?? ''))
+  }
+
+  /** Vorlagen des Kerns und eingeschalteter Plugins */
+  availablePresets(): PresetDef[] {
+    return listPresets().filter((d) => !d.plugin || this.isEnabled(d.plugin))
+  }
+
+  /** Rollen des Kerns und eingeschalteter Plugins */
+  availableRoles(): string[] {
+    return ROLES.filter((r) => {
+      const def = PLUGIN_ROLES.get(r)
+      return !def?.plugin || this.isEnabled(def.plugin)
+    })
+  }
+
+  presetAvailable(id: string): boolean {
+    const def = getPreset(id)
+    return !!def && (!def.plugin || this.isEnabled(def.plugin))
   }
 
   setEnabled(id: string, enabled: boolean) {
@@ -154,12 +202,69 @@ export class PluginManager {
         description: p.manifest.description ?? null,
         author: p.manifest.author ?? null,
         builtin: p.builtin,
+        repo: (this.stateOf(p.manifest.id) as any).source?.repo ?? null,
         enabled,
         error: p.error,
         web: p.manifest.web ? `/plugins/${p.manifest.id}/${p.manifest.web}?v=${v}` : null,
         styles: p.manifest.styles ? `/plugins/${p.manifest.id}/${p.manifest.styles}?v=${v}` : null,
       }
     })
+  }
+
+  /** Katalog aller Repos, ergänzt um den Stand dieser Installation */
+  async catalogView(refresh: boolean) {
+    const { entries, repos } = await this.catalog.load(refresh)
+    const onDisk = this.catalog.installed()
+    return {
+      repos,
+      restart_required: [...this.restartNeeded],
+      items: entries.map((e) => {
+        const builtin = this.plugins.some((p) => p.builtin && p.manifest.id === e.id)
+        const installed = onDisk.find((p) => p.id === e.id)?.version ?? null
+        return {
+          ...e,
+          builtin,
+          installed,
+          update: !!installed && compareVersions(installed, e.version) < 0,
+          compatible: !e.min_app || compareVersions(this.s.version, e.min_app) >= 0,
+        }
+      }),
+    }
+  }
+
+  /** Aus dem Katalog installieren oder aktualisieren */
+  async install(id: string) {
+    if (this.plugins.some((p) => p.builtin && p.manifest.id === id)) throw invalid('Dieses Plugin ist mitgeliefert und wird mit BasaltNotes aktualisiert.')
+    const entry = (await this.catalog.load(true)).entries.find((e) => e.id === id)
+    if (!entry) throw notFound('Plugin')
+    const { manifest, dir } = await this.catalog.install(entry, this.s.version)
+    const known = this.plugins.find((p) => p.manifest.id === id)
+    const full: PluginManifest = { ...manifest, name: manifest.name || id, version: manifest.version || entry.version }
+    if (manifest.server || known?.module) {
+      // Server-Code lässt sich nicht im laufenden Betrieb tauschen
+      this.restartNeeded.add(id)
+      if (known) Object.assign(known, { dir, manifest: full })
+    } else if (known) {
+      Object.assign(known, { dir, manifest: full, error: null })
+    } else {
+      const p: LoadedPlugin = { manifest: full, dir, builtin: false, module: null, error: null, ctx: null }
+      p.ctx = this.context(p)
+      this.plugins.push(p)
+    }
+    if (this.stateOf(id).enabled === undefined) updateFileConfig(this.s.config.dataDir, (doc) => doc.setIn(['plugins', id, 'enabled'], true))
+    this.s.events.emit('system.plugins', null, { id, installed: full.version })
+    return { id, version: full.version, restart_required: this.restartNeeded.has(id) }
+  }
+
+  uninstall(id: string) {
+    const known = this.plugins.find((p) => p.manifest.id === id)
+    if (known?.builtin) throw invalid('Mitgelieferte Plugins lassen sich nur ausschalten.')
+    const info = this.catalog.uninstall(id)
+    // Sofort aus: Endpunkte antworten 404, nur der geladene Code bleibt bis zum Neustart im Speicher
+    this.plugins = this.plugins.filter((p) => p.manifest.id !== id)
+    if (info.server) this.restartNeeded.add(id)
+    this.s.events.emit('system.plugins', null, { id, removed: true })
+    return { id, restart_required: this.restartNeeded.has(id) }
   }
 
   /** Kontext, den das Plugin bekommt */
@@ -186,6 +291,12 @@ export class PluginManager {
         noteFor,
         requireScope,
         accessOf,
+        visibilityOf,
+        slugify,
+        stripDmBlocks,
+        stripBlockMarkers,
+        listBlocks,
+        headings,
         isAreaRestricted,
         assertInArea,
         restrictSql,
@@ -259,11 +370,35 @@ export class PluginManager {
       '/plugins/:id',
       { schema: { tags: ['System'], summary: 'Plugin ein-/ausschalten {enabled} (admin)', body: { type: 'object', required: ['enabled'], properties: { enabled: { type: 'boolean' } } } } },
       async (req) => {
-        requireScope(req, 'admin')
+        requireServerAdmin(req)
         this.setEnabled((req.params as any).id, (req.body as any).enabled)
         return { items: this.list() }
       },
     )
+    const tags = ['System']
+    api.get('/plugins/catalog', { schema: { tags, summary: 'Katalog aller eingetragenen Repos mit installiertem Stand und Updates (?refresh=1)' } }, async (req) => {
+      requireServerAdmin(req)
+      return this.catalogView((req.query as any)?.refresh === '1')
+    })
+    api.post('/plugins/install', { schema: { tags, summary: 'Plugin aus dem Katalog installieren oder aktualisieren {id}', body: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } } } }, async (req) => {
+      requireServerAdmin(req)
+      return this.install((req.body as any).id)
+    })
+    api.delete('/plugins/:id', { schema: { tags, summary: 'Installiertes Plugin entfernen' } }, async (req) => {
+      requireServerAdmin(req)
+      return this.uninstall((req.params as any).id)
+    })
+    api.post('/plugins/repos', { schema: { tags, summary: 'Eigenes GitHub-Repo eintragen {url}', body: { type: 'object', required: ['url'], properties: { url: { type: 'string' } } } } }, async (req, reply) => {
+      requireServerAdmin(req)
+      const repo = await this.catalog.addRepo((req.body as any).url)
+      reply.code(201)
+      return { repo }
+    })
+    api.delete('/plugins/repos', { schema: { tags, summary: 'Eigenes Repo austragen {url}', body: { type: 'object', required: ['url'], properties: { url: { type: 'string' } } } } }, async (req) => {
+      requireServerAdmin(req)
+      this.catalog.removeRepo((req.body as any).url)
+      return { ok: true }
+    })
   }
 
   /** Oberflächen-Dateien ausliefern: /plugins/<id>/<pfad> */

@@ -222,6 +222,23 @@ BasaltNotes lässt sich mit Plugins erweitern. Der **Kalender samt CalDAV** ist 
 (mitgeliefert, eingeschaltet) und dient als Beispiel: [`plugins/calendar`](../plugins/calendar).
 Ein- und ausschalten: Einstellungen → Plugins (wirkt sofort, die Seite lädt neu).
 
+**D&D** ist ebenfalls ein mitgeliefertes Plugin: Kampagnen, Spieler-Sicht und Spieler-Konten, die D&D-Vorlage, die Regeln des
+Kurators und der Beispiel-Vault. Auf einer neuen Installation ist es aus. Solange ein Vault die Vorlage `dnd` benutzt, ist es
+automatisch an, bestehende Vaults laufen also ohne Zutun weiter. Schaltet man es aus, bleiben Notizen und Typen erhalten und
+bestehende Spieler-Konten weiter eingeschränkt; nur die Kampagnenseiten und neue D&D-Vaults und Spieler-Konten fallen weg.
+
+### Katalog: Plugins installieren und aktualisieren
+
+Einstellungen → Plugins → **Katalog** zeigt die Plugins aller eingetragenen Repos, ähnlich wie HACS bei Home Assistant.
+Voreingestellt ist das offizielle Repo [`Poldion/BasaltNotes-Plug`](https://github.com/Poldion/BasaltNotes-Plug). Unter **Repos**
+lassen sich beliebige GitHub-Repos ergänzen. Neue Versionen erscheinen als Update unter **Installiert**.
+
+- Das darf nur, wer den Server verwaltet.
+- Plugins nur mit Oberfläche wirken nach dem automatischen Neuladen der Seite, Plugins mit Server-Teil erst nach einem Neustart des Servers (die Oberfläche weist darauf hin).
+- Pakete werden **nicht geprüft oder signiert**. Plugins laufen mit allen Rechten des Servers – installiere nur aus Quellen, denen du vertraust.
+
+Aufbau eines eigenen Repos: siehe [README des Plugin-Repos](https://github.com/Poldion/BasaltNotes-Plug#readme).
+
 **Aufbau** – ein Ordner mit `manifest.json`:
 
 ```json
@@ -266,13 +283,22 @@ import { buildPlugin } from '@basaltnotes/plugin-sdk/build'
 await buildPlugin({ root: import.meta.dirname, server: 'src/server.ts', web: 'src/web.tsx', styles: 'src/web.css' })
 ```
 
+**Weitere Erweiterungspunkte:** Das Server-Modul kann außerdem `presets` (Vorlagen für neue Vaults), `profiles` (Regeln für Kurator,
+Eingang und Chat) und `roles` (Rollen für Konten) mitbringen, das Oberflächen-Modul mit `registerHomeSection` Abschnitte auf der
+Startseite eines Notizbuchs. Vollständiges Beispiel: [`plugins/dnd`](../plugins/dnd).
+
 Plugins laufen mit den Rechten der App (Server) bzw. der angemeldeten Person (Oberfläche) – nur Plugins
 installieren, denen man vertraut.
 
 | Methode | Pfad | Scope | Zweck |
 |---|---|---|---|
 | GET | `/plugins` | angemeldet | Installierte Plugins `{id, name, version, description, builtin, enabled, error, web, styles}` |
-| PUT | `/plugins/{id}` | admin | Ein-/ausschalten `{enabled}` |
+| PUT | `/plugins/{id}` | Server-Admin | Ein-/ausschalten `{enabled}` |
+| GET | `/plugins/catalog` | Server-Admin | Katalog aller Repos mit installiertem Stand und Updates (`?refresh=1`) |
+| POST | `/plugins/install` | Server-Admin | Aus dem Katalog installieren oder aktualisieren `{id}` |
+| DELETE | `/plugins/{id}` | Server-Admin | Installiertes Plugin entfernen |
+| POST / DELETE | `/plugins/repos` | Server-Admin | Eigenes GitHub-Repo eintragen oder austragen `{url}` |
+| GET | `/presets` | angemeldet | Vorlagen für neue Vaults (Kern und eingeschaltete Plugins) |
 | GET | `/plugins/{id}/<datei>` (ohne `/api/v1`) | – | Oberflächen-Dateien (nur aus dem Ordner von `web`/`styles`) |
 
 ---

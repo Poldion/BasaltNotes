@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { useApp } from '../lib/state'
 import { Spinner } from '../lib/ui'
@@ -9,6 +9,13 @@ import { tr } from '../lib/i18n'
 export function SetupPage() {
   const { features, refreshMe, refreshVaults, toast } = useApp()
   const [example, setExample] = useState(false)
+  // Beispiel-Vaults bringen Vorlagen mit; ohne passendes Plugin gibt es keins
+  const [sample, setSample] = useState<{ name: string; description: string | null } | null>(null)
+  useEffect(() => {
+    api<{ items: { example: { name: string; description: string | null } | null }[] }>('/presets')
+      .then((r) => setSample(r.items.find((p) => p.example)?.example ?? null))
+      .catch(() => undefined)
+  }, [])
   const [curator, setCurator] = useState(features.curator)
   const [chat, setChat] = useState(features.chat)
   const [busy, setBusy] = useState(false)
@@ -59,13 +66,15 @@ export function SetupPage() {
           </div>
         </label>
 
-        <label className="feature-toggle">
-          <input type="checkbox" checked={example} onChange={(e) => setExample(e.target.checked)} />
-          <div>
-            <strong>{tr('Beispiel-Vault anlegen')}</strong>
-            <div className="small muted">{tr('Eine kleine, erfundene D&D-Kampagne („Die Nebelküste“) mit Sessions, NPCs, Orten und Quests – zum Ausprobieren von Links, Graph und Kampagnenseite. Lässt sich später einfach löschen.')}</div>
-          </div>
-        </label>
+        {sample && (
+          <label className="feature-toggle">
+            <input type="checkbox" checked={example} onChange={(e) => setExample(e.target.checked)} />
+            <div>
+              <strong>{tr('Beispiel-Vault anlegen')}</strong>
+              {sample.description && <div className="small muted">{tr(sample.description)}</div>}
+            </div>
+          </label>
+        )}
 
         {ai && !llmShown && (
           <button className="btn small" style={{ alignSelf: 'flex-start' }} onClick={() => setLlmShown(true)}>
