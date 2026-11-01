@@ -6,6 +6,7 @@ import { Spinner } from './lib/ui'
 import { Layout } from './components/Layout'
 import { LoginPage } from './pages/LoginPage'
 import { VaultHome } from './pages/VaultHome'
+import { VaultOverview } from './pages/VaultOverview'
 import { NotePage } from './pages/NotePage'
 import { SearchPage } from './pages/SearchPage'
 import { ChatPage } from './pages/ChatPage'
@@ -21,7 +22,7 @@ import { EmbedRoutes } from './pages/Embed'
 import { loadPlugins, registry } from './lib/plugins'
 
 export function App() {
-  const { me, setMe, refreshVaults, vaults, embed, toasts, isAdmin, features } = useApp()
+  const { me, setMe, refreshVaults, embed, toasts, isAdmin, features } = useApp()
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
   const location = useLocation()
@@ -93,11 +94,13 @@ export function App() {
       </>
     )
 
-  const first = vaults[0]?.id
   return (
     <>
       <Routes>
-        <Route path="/login" element={<Navigate to={first ? `/${first}` : '/settings'} replace />} />
+        <Route path="/login" element={<Navigate to="/" replace />} />
+        <Route path="/" element={<Layout />}>
+          <Route index element={<VaultOverview />} />
+        </Route>
         <Route path="/settings" element={<Layout />}>
           <Route index element={<SettingsPage />} />
         </Route>
@@ -126,7 +129,7 @@ export function App() {
           <Route path="trash" element={<TrashPage />} />
           <Route path="settings" element={<VaultSettingsPage />} />
         </Route>
-        <Route path="*" element={first ? <Navigate to={`/${first}`} replace /> : <Navigate to="/settings" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       {toastEl}
     </>

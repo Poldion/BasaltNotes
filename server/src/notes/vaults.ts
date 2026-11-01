@@ -96,12 +96,40 @@ export class VaultManager {
     await this.stopWatcher(v.id)
     await v.flushCommit()
     const trash = path.join(this.root, '..', 'deleted-vaults')
-    fs.mkdirSync(trash, { recursive: true })
-    fs.renameSync(v.dir, path.join(trash, `${v.id}-${Date.now()}`))
+    // Aus der Liste nehmen, damit beim Verschieben niemand mehr in den Ordner schreibt
+    this.vaults.delete(v.id)
+    try {
+      fs.mkdirSync(trash, { recursive: true })
+      await this.moveDir(v, path.join(trash, `${v.id}-${Date.now()}`))
+    } catch (e) {
+      this.vaults.set(v.id, v)
+      if (this.opts.watch) this.startWatcher(v)
+      throw e
+    }
     for (const t of ['notes', 'names', 'links', 'props', 'tags', 'blocks']) this.db.run(`DELETE FROM ${t} WHERE vault = ?`, v.id)
     this.db.run('DELETE FROM notes_fts WHERE vault = ?', v.id)
-    this.vaults.delete(v.id)
     this.events.emit('vault.deleted', v.id, {})
+  }
+
+  /** Vault-Ordner verschieben; liegt /data/vaults auf einem eigenen Mount, geht das nur per Kopie */
+  private async moveDir(v: Vault, target: string): Promise<void> {
+    try {
+      fs.renameSync(v.dir, target)
+      return
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EXDEV') throw e
+    }
+    // Erst verstecken: Der Vault ist so auf einen Schlag weg und taucht nach einem Absturz beim Kopieren nicht halb wieder auf
+    const hidden = path.join(this.root, `.deleting-${path.basename(target)}`)
+    fs.renameSync(v.dir, hidden)
+    try {
+      await fs.promises.cp(hidden, target, { recursive: true, preserveTimestamps: true, verbatimSymlinks: true })
+    } catch (e) {
+      await fs.promises.rm(target, { recursive: true, force: true }).catch(() => undefined)
+      fs.renameSync(hidden, v.dir)
+      throw e
+    }
+    await fs.promises.rm(hidden, { recursive: true, force: true }).catch((e) => console.warn(`Ordner ${hidden} konnte nicht entfernt werden:`, (e as Error).message))
   }
 
   // ------------------------------------------------------------ Dateisystem-Watcher

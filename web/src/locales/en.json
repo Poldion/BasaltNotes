@@ -838,5 +838,8 @@
   "Eigene Repos: ein GitHub-Repo mit": "Custom repos: a GitHub repo with",
   "und einem Release mit .tar.gz-Paket.": "and a release with a .tar.gz package.",
   "Plugins laufen mit allen Rechten des Servers und können alle Notizen lesen und ändern. Pakete werden nicht geprüft oder signiert. Installiere nur, was du aus einer Quelle kennst, der du vertraust.": "Plugins run with all the server's rights and can read and change all notes. Packages are neither checked nor signed. Only install what comes from a source you trust.",
-  "Für Pen-&-Paper-Runden: Kampagnen mit Startseite und Timeline, Spieler-Sicht und Spieler-Konten, Vorlage mit Sessions, NPCs, Orten und Quests, Kurator-Regeln und ein Beispiel-Vault.": "For tabletop groups: campaigns with home page and timeline, player view and player accounts, a template with sessions, NPCs, locations and quests, curator rules and an example vault."
+  "Für Pen-&-Paper-Runden: Kampagnen mit Startseite und Timeline, Spieler-Sicht und Spieler-Konten, Vorlage mit Sessions, NPCs, Orten und Quests, Kurator-Regeln und ein Beispiel-Vault.": "For tabletop groups: campaigns with home page and timeline, player view and player accounts, a template with sessions, NPCs, locations and quests, curator rules and an example vault.",
+  "Noch keine Vaults. Lege den ersten an.": "No vaults yet. Create the first one.",
+  "Dir ist noch kein Vault freigegeben.": "No vault has been shared with you yet.",
+  "Noch keine Notizen.": "No notes yet."
 }

@@ -4,6 +4,21 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.26.0] – 2026-11-01
+
+### Added
+
+- Overview page at the start of the app: all vaults you can access with template, number of notes and last change,
+  plus the most recently changed notes across them. Player accounts with a single vault still go straight to it. The
+  BasaltNotes logo in the sidebar leads here.
+
+### Fixed
+
+- Deleting a vault failed when `/data/vaults` is a separate mount, as in the recommended setup. The folder is now
+  copied to `data/deleted-vaults` in that case, including its history. If copying fails, the vault stays untouched.
+- A failed vault deletion now shows an error message instead of doing nothing, and no longer stops the vault's file
+  watcher.
+
 ## [0.25.0] – 2026-11-01
 
 ### Added
@@ -79,6 +94,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - User interface in English and German; API error messages in both languages; template folder names follow the
   language a vault is created in.
 
+[0.26.0]: https://github.com/Poldion/BasaltNotes/releases/tag/v0.26.0
 [0.25.0]: https://github.com/Poldion/BasaltNotes/releases/tag/v0.25.0
 [0.24.0]: https://github.com/Poldion/BasaltNotes/releases/tag/v0.24.0
 [0.23.0]: https://github.com/Poldion/BasaltNotes/releases/tag/v0.23.0

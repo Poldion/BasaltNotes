@@ -90,9 +90,13 @@ export function VaultSettingsPage() {
   }
   const remove = async () => {
     if (!(await confirm(<>{tr('Vault „{name}“ löschen? Der Ordner wird nach {path} verschoben.', { name: info?.name, path: 'data/deleted-vaults' })}</>, { yes: tr('Vault löschen'), danger: true }))) return
-    await api(`/vaults/${enc(vault)}`, { method: 'DELETE' })
-    await refreshVaults()
-    navigate('/')
+    try {
+      await api(`/vaults/${enc(vault)}`, { method: 'DELETE' })
+      await refreshVaults()
+      navigate('/')
+    } catch (e) {
+      toast((e as Error).message, 'error')
+    }
   }
 
   return (

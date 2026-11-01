@@ -188,6 +188,10 @@ kbd {
   padding: 14px 14px 10px;
   font-weight: 650;
   letter-spacing: 0.2px;
+  color: inherit;
+}
+.brand:hover {
+  text-decoration: none;
 }
 .brand img {
   width: 26px;
@@ -338,6 +342,26 @@ kbd {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 16px;
+}
+.vault-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+.vault-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  color: inherit;
+}
+.vault-card:hover {
+  background: var(--accent-soft);
+  text-decoration: none;
+}
+.vault-card-name {
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 .card h2,
 .card h3 {

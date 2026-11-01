@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { api, enc } from '../lib/api'
 import { useApp, useTypes, useVaultEvents } from '../lib/state'
 import { FileTree } from './FileTree'
@@ -74,10 +74,10 @@ export function Layout() {
     <div className="app">
       <div className={`overlay ${open ? 'open' : ''}`} onClick={() => setOpen(false)} />
       <aside className={`sidebar ${open ? 'open' : ''}`} aria-label={tr('Navigation')}>
-        <div className="brand">
+        <Link className="brand" to="/" title={tr('Übersicht')}>
           <img src="/icon.svg" alt="" />
           <span>BasaltNotes</span>
-        </div>
+        </Link>
         <div className="sidebar-section">
           <label className="sr-only" htmlFor="vault-select">
             {tr('Vault')}
