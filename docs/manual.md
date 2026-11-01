@@ -142,11 +142,11 @@ covered by its snapshots.
 | Role | May |
 |---|---|
 | **Administration** | everything, incl. users, tokens, webhooks, vault settings |
-| **Edit** | read/write notes, inbox, accept curator proposals, undo runs |
-| **Read** | read everything |
+| **Member** | one permission level per notebook, like tokens (see “Grants per notebook”), optionally only an area |
 | **Player** | only notes and sections with `visibility: players`, optionally only one campaign; no inbox/curator |
 
-Every account can be limited to individual vaults. Locked accounts and accounts whose permissions changed are signed out
+The older roles **Edit** (`editor`) and **Read** (`viewer`) keep working and become members with the same level when edited.
+Administration and player accounts can be limited to individual vaults. Locked accounts and accounts whose permissions changed are signed out
 immediately. The last admin can neither be deleted nor downgraded.
 Passwords are stored with Argon2, tokens only as a hash.
 
@@ -308,7 +308,7 @@ Same `source.key` → contributions are replaced. Whisper glossary:
 
 ### Home Assistant
 
-**1. Create an access:** Settings → API tokens → *app access*, e.g. “Home Assistant”: notebook “Notizen” with
+**1. Create an access:** Settings → API tokens → new token, e.g. “Home Assistant”: notebook “Notizen” with
 *read + write* (optionally “DnD” with *read only* for D&D dates). Put the token into `secrets.yaml`:
 
 ```yaml
@@ -448,11 +448,16 @@ Reachable without sign-in: `GET /health`, `POST /auth/login`, `GET /openapi.json
 | `inbox` | Only submitting to the inbox |
 | `curate` | Curator: accept/reject proposals, undo runs, curate notes |
 | `admin` | Everything, incl. users, tokens, webhooks, vault settings |
+| `create_vault` | Creating vaults. The token that creates a vault has all rights in it, and only there (up to 20 own vaults) |
 
 Tokens and users can be limited to individual vaults. Tokens/accounts with the player view (`visibility: players`) only see
 notes and sections with `visibility: players` and have no access to inbox, proposals and curator runs. Roles of user
 accounts: `admin` (all scopes), `editor` (`read`, `write`, `inbox`, `curate`), `viewer` (`read`), `player` (`read` +
 player view). Visibility (`visibility`) only exists in D&D vaults.
+
+Other projects can get their own vault: create a token with `{"name": "MyApp", "scopes": ["create_vault"]}` and let the app call
+`POST /vaults` with `{"name": "MyApp"}` (`409` = name is taken; check `GET /vaults` first). The app sees only its own vaults, unless it
+also has other scopes or grants. Deleting the vault ends the ownership.
 
 #### Error format
 
@@ -508,8 +513,8 @@ player view). Visibility (`visibility`) only exists in D&D vaults.
 | Method | Path | Scope | Purpose |
 |---|---|---|---|
 | GET | `/users` | admin | All users + available roles |
-| POST | `/users` | admin | Create `{username, password, role, vaults?, campaign?, display_name?}` |
-| PATCH | `/users/{id}` | admin | Change: `role`, `vaults`, `campaign`, `display_name`, `disabled`, `password` (reset) |
+| POST | `/users` | admin | Create `{username, password, role, grants? (role `member`), vaults?, campaign?, display_name?}` |
+| PATCH | `/users/{id}` | admin | Change: `role`, `grants`, `vaults`, `campaign`, `display_name`, `disabled`, `password` (reset) |
 | DELETE | `/users/{id}` | admin | Delete (not your own account, not the last admin) |
 
 `vaults` is `"*"` or a list of vault IDs. User name: 2–63 characters (`a-z 0-9 . _ @ -`), password at least 8 characters.
@@ -519,15 +524,28 @@ player view). Visibility (`visibility`) only exists in D&D vaults.
 | Method | Path | Scope | Purpose |
 |---|---|---|---|
 | GET | `/tokens` | admin | Tokens (without secret) with “last used” |
-| POST | `/tokens` | admin | App access: `{name, grants: [grant], expires?}` · classic: `{name, scopes, vaults?, expires?, visibility?: "players", campaign?}` → `{token, …}` – **the token is shown only once** |
+| POST | `/tokens` | admin | `{name, grants: [grant], scopes?: ["create_vault"], expires?}` · still possible, classic: `{name, scopes, vaults?, expires?, visibility?: "players", campaign?}` → `{token, …}` – **the token is shown only once** |
 | PATCH | `/tokens/{id}` | admin | Change grants `{grants}` – the token value stays the same |
 | POST | `/tokens/embed` | `read`/`write` in the vault | Short-lived token for embeds `{vault, scope?: "read"\|"write", ttl? (s, default 3600, max. 7 days), visibility?, campaign?}` |
 | DELETE | `/tokens/{id}` | admin | Revoke |
 
-Example WhisperNotes (classic): `{"name": "WhisperNotes", "scopes": ["inbox", "read"], "vaults": ["dnd", "notizen"]}`.
+Example WhisperNotes: `{"name": "WhisperNotes", "grants": [{"vault": "dnd", "access": "read_inbox"}, {"vault": "notizen", "access": "read_inbox"}]}`.
 
-**Grants per notebook** (Settings → API tokens → *app access*): every grant names a notebook and whether the access may only
-**read** or **read + write** – optionally limited to an **area**:
+**Grants per notebook** (Settings → API tokens): every grant names a notebook (`*` = all) and a permission level.
+
+| Level (`access`) | Rights |
+|---|---|
+| `read` | Read |
+| `inbox` | Only submit to the inbox |
+| `read_inbox` | Read + inbox |
+| `curate` | Read + inbox + curator |
+| `write` | Read + write + inbox |
+| `write_curate` | Write + curator |
+| `admin` | Everything in the notebook, including its settings |
+
+Managing the server (users, tokens, webhooks) requires `admin` for `*`. Change access at any time with *Permissions* or
+`PATCH /tokens/{id}` with `{name?, grants?, create_vault?, expires?}`; the token value stays the same. Tokens created the classic way
+keep working and appear the same way. Read, inbox and write can also be limited to an **area**:
 
 ```json
 {
@@ -549,7 +567,7 @@ An access with an area only sees matching entries in list, search, query, names,
 are “not found”, links to them are not resolved. Writing creates new notes inside the area (campaign is set, folder
 chosen) and refuses changes that would move a note out of the area. Functions that could show or change content outside
 (history, trash, export, inbox, curator, attachments, folders, tags, live events) are blocked for such accesses. Curator
-and admin rights only exist via classic tokens.
+and admin rights only work without an area.
 
 ### Vaults
 

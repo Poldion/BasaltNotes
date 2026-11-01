@@ -158,6 +158,9 @@ export class Db {
     if (!cols.some((c) => c.name === 'user_id')) this.raw.exec('ALTER TABLE sessions ADD COLUMN user_id TEXT; DELETE FROM sessions;')
     const tokenCols = this.raw.prepare('PRAGMA table_info(tokens)').all() as { name: string }[]
     if (!tokenCols.some((c) => c.name === 'grants')) this.raw.exec('ALTER TABLE tokens ADD COLUMN grants TEXT')
+    const userCols = this.raw.prepare('PRAGMA table_info(users)').all() as { name: string }[]
+    if (!userCols.some((c) => c.name === 'grants')) this.raw.exec('ALTER TABLE users ADD COLUMN grants TEXT')
+    if (!tokenCols.some((c) => c.name === 'owned_vaults')) this.raw.exec("ALTER TABLE tokens ADD COLUMN owned_vaults TEXT NOT NULL DEFAULT '[]'")
   }
 }
 

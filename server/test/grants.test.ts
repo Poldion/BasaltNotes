@@ -86,7 +86,6 @@ describe('Freigabe: lesen, Kampagne Regarion, nur Lore + NPCs', () => {
       ['GET', `${V}/trash`],
       ['GET', `${V}/notes/${ids['Kefir']}/history`],
       ['GET', `${V}/export.zip`],
-      ['GET', `${V}/tree`],
       ['GET', `${V}/tags`],
       ['GET', `${V}/inbox`],
       ['GET', `${V}/proposals`],
@@ -158,7 +157,7 @@ describe('Freigaben ohne Bereich und Ordner-Einschränkung', () => {
     expect((await req('GET', '/api/v1/vaults/notizen/notes', undefined, h)).status).toBe(200)
     expect((await req('GET', `${V}/notes`, undefined, h)).status).toBe(403)
     expect((await req('POST', '/api/v1/tokens', { name: 'y', grants: [{ vault: 'gibtsnicht', access: 'read' }] })).status).toBe(404)
-    expect((await req('POST', '/api/v1/tokens', { name: 'y', grants: [{ vault: 'dnd', access: 'admin' }] })).status).toBe(400)
+    expect((await req('POST', '/api/v1/tokens', { name: 'y', grants: [{ vault: 'dnd', access: 'superuser' }] })).status).toBe(400)
     expect((await req('POST', '/api/v1/tokens', { name: 'y', grants: [{ vault: 'dnd', access: 'read', folders: ['../x'] }] })).status).toBe(400)
   })
 })

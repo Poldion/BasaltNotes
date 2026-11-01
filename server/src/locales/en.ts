@@ -5,6 +5,12 @@
 export const EN: Record<string, string> = {
   'Zu viele Anfragen. Bitte in {x} s erneut versuchen.': 'Too many requests. Please try again in {x} s.',
   'Abgebrochen.': 'Cancelled.',
+  'access muss eine von {x} sein.': 'access must be one of {x}.',
+  'Eine Freigabe für alle Notizbücher kann nicht auf einen Bereich beschränkt werden.': 'A grant for all notebooks cannot be limited to an area.',
+  'Kurator- und Verwaltungsrechte gehen nicht zusammen mit einem Bereich.': 'Curator and admin rights cannot be combined with an area.',
+  'Eingebettete Zugänge und Spieler-Links lassen sich nicht ändern, nur widerrufen.': 'Embed access and player links cannot be changed, only revoked.',
+  'Dieser Zugang hat bereits {x} eigene Vaults.': 'This access already has {x} vaults of its own.',
+  'create_vault geht nicht zusammen mit visibility oder campaign.': 'create_vault cannot be combined with visibility or campaign.',
   'Interner Fehler.': 'Internal error.',
   'Anmeldung erforderlich.': 'Sign-in required.',
   'CSRF-Token fehlt oder ist ungültig.': 'CSRF token missing or invalid.',

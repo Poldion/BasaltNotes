@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useLocation } from 'react-router-dom'
 import { api, setCsrf, withToken, type Me, type TypeSchema, type VaultInfo, type Features } from './api'
 import { tr } from './i18n'
 
@@ -20,7 +21,13 @@ interface AppState {
   toast: (text: string, kind?: Toast['kind']) => void
   toasts: Toast[]
   embed: boolean
+  /** Rechte im gerade geöffneten Vault */
   canWrite: boolean
+  canCurate: boolean
+  isVaultAdmin: boolean
+  /** Im geöffneten Vault auf einen Bereich beschränkt: Ordner, Eingang, Papierkorb usw. sind gesperrt */
+  isAreaLimited: boolean
+  /** Darf den Server verwalten (Benutzer, Tokens, Funktionen …) */
   isAdmin: boolean
   /** Spieler-Sicht: keine DM-Bereiche (Eingang, Vorschläge, Protokoll) */
   isPlayer: boolean
@@ -94,8 +101,14 @@ export function AppProvider({ children, embed }: { children: ReactNode; embed: b
     setTimeout(() => setToasts((ts) => ts.filter((t) => t.id !== id)), kind === 'error' ? 7000 : 3500)
   }, [])
 
+  const { pathname } = useLocation()
+  const segments = pathname.split('/').filter(Boolean)
+  const vaultInPath = segments[0] === 'embed' ? segments[1] : segments[0]
+
   const value = useMemo<AppState>(() => {
-    const scopes = me?.scopes ?? []
+    // Rechte des geöffneten Vaults; außerhalb eines Vaults alle Rechte des Zugangs
+    const here = me?.access?.filter((x) => x.vault === '*' || x.vault === vaultInPath) ?? []
+    const scopes = here.length ? here.flatMap((x) => x.rights) : (me?.scopes ?? [])
     return {
       me,
       setMe,
@@ -107,12 +120,15 @@ export function AppProvider({ children, embed }: { children: ReactNode; embed: b
       toasts,
       embed,
       canWrite: scopes.includes('write') || scopes.includes('admin'),
-      isAdmin: scopes.includes('admin'),
+      canCurate: scopes.includes('curate') || scopes.includes('admin'),
+      isVaultAdmin: scopes.includes('admin'),
+      isAreaLimited: here.some((x) => x.area),
+      isAdmin: !!me?.server_admin,
       isPlayer: me?.visibility === 'players',
       features: me?.features ?? { curator: false, chat: false, setup_done: true },
       refreshMe,
     }
-  }, [me, setMe, refreshMe, vaults, refreshVaults, theme, setTheme, toast, toasts, embed])
+  }, [me, setMe, refreshMe, vaults, refreshVaults, theme, setTheme, toast, toasts, embed, vaultInPath])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

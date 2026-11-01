@@ -19,8 +19,7 @@ interface Progress {
 
 /** „Kurator arbeitet …“ mit Stopp-Knopf – sichtbar, solange etwas läuft oder wartet. */
 export function CuratorIndicator({ vault }: { vault: string }) {
-  const { me, toast, isPlayer } = useApp()
-  const canCurate = !!me?.scopes.some((s) => ['curate', 'admin'].includes(s))
+  const { toast, isPlayer, canCurate } = useApp()
   const [status, setStatus] = useState<{ running: Progress[]; queued: number } | null>(null)
   const [stopping, setStopping] = useState(false)
 

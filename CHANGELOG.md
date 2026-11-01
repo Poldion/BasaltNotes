@@ -4,6 +4,29 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.24.0] – 2026-11-01
+
+### Added
+
+- New token scope `create_vault`: other projects can create their own vaults through the API and have all rights in
+  them, and only there (up to 20 per token).
+- Token permissions can be changed afterwards (name, expiry, permissions) without changing the token value.
+
+### Changed
+
+- One permission system: tokens get one level per notebook (`read`, `inbox`, `read_inbox`, `curate`, `write`,
+  `write_curate`, `admin`, also for all notebooks with `*`). Existing tokens keep working.
+- User accounts use the same levels: the new role `member` gets one level per notebook, optionally limited to an area.
+  The roles `editor` and `viewer` keep working and become members when edited.
+- The web interface shows actions according to the rights in the open vault. Vault settings are available to anyone
+  with `admin` in that vault.
+- The file tree is now available to access limited to an area and shows only notes in that area.
+
+### Security
+
+- A token with `admin` for individual vaults can no longer manage the server (users, tokens, webhooks). That now
+  requires `admin` for all vaults.
+
 ## [0.23.1] – 2026-10-29
 
 ### Fixed
@@ -35,4 +58,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - User interface in English and German; API error messages in both languages; template folder names follow the
   language a vault is created in.
 
+[0.24.0]: https://github.com/Poldion/BasaltNotes/releases/tag/v0.24.0
 [0.23.0]: https://github.com/Poldion/BasaltNotes/releases/tag/v0.23.0

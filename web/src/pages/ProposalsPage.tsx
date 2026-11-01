@@ -23,8 +23,7 @@ interface Proposal {
 export function ProposalsPage({ embedded }: { embedded?: boolean } = {}) {
   const { vault = '' } = useParams()
   const [params] = useSearchParams()
-  const { toast, me } = useApp()
-  const canCurate = !!me?.scopes.some((s) => ['curate', 'admin'].includes(s))
+  const { toast, canCurate } = useApp()
   const [status, setStatus] = useState('open')
   const [items, setItems] = useState<Proposal[] | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())

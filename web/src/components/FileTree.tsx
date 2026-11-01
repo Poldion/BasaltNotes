@@ -50,7 +50,7 @@ const HIDDEN = new Set(['_inbox', '_attachments'])
 
 export function FileTree({ vault, onNewNote }: { vault: string; onNewNote: (folder?: string) => void }) {
   const { id: activeId } = useParams()
-  const { toast, canWrite } = useApp()
+  const { toast, canWrite, isAreaLimited } = useApp()
   const navigate = useNavigate()
   const [data, setData] = useState<{ folders: string[]; notes: TreeNote[] } | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(() => {
@@ -242,7 +242,7 @@ export function FileTree({ vault, onNewNote }: { vault: string; onNewNote: (fold
     <div className="tree" role="tree" aria-label={tr('Dateien')}>
       <div className={`row ${dropTarget === '' ? 'tree-row drop' : ''}`} {...dropProps('')} style={{ minHeight: 4 }} />
       {renderFolder(tree, 0)}
-      {canWrite && (
+      {canWrite && !isAreaLimited && (
         <button className="btn small ghost" style={{ marginTop: 8 }} onClick={() => newFolder('')}>
           {tr('+ Ordner')}
         </button>

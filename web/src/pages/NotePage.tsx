@@ -389,13 +389,12 @@ function NoteMenu({ vault, note, onReload }: { vault: string; note: Note; onRelo
   const [open, setOpen] = useState(false)
   const [curate, setCurate] = useState(false)
   const [linking, setLinking] = useState(false)
-  const { canWrite, toast, me, features, vaults } = useApp()
+  const { canWrite, canCurate, toast, features, vaults } = useApp()
   const linkOnly = vaults.find((v) => v.id === vault)?.curator.mode === 'link'
   const navigate = useNavigate()
   const { confirm, el } = useConfirm()
   const ref = useRef<HTMLButtonElement>(null)
   const rect = ref.current?.getBoundingClientRect()
-  const canCurate = me?.scopes.some((s) => ['curate', 'admin'].includes(s))
 
   const act = async (fn: () => Promise<any>) => {
     setOpen(false)

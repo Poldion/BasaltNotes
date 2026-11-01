@@ -7,34 +7,62 @@ import { ApiError, invalid, notFound } from './lib/errors.js'
 import { randomToken, sha256 } from './lib/util.js'
 import { AppConfig, updateFileConfig } from './config.js'
 
-export const SCOPES = ['read', 'write', 'inbox', 'curate', 'admin'] as const
+export const SCOPES = ['read', 'write', 'inbox', 'curate', 'admin', 'create_vault'] as const
 export type Scope = (typeof SCOPES)[number]
 
-export const ROLES = ['admin', 'editor', 'viewer', 'player'] as const
+/** member = Rechte je Notizbuch wie bei Tokens; editor und viewer sind die älteren Rollen dafür */
+export const ROLES = ['admin', 'member', 'editor', 'viewer', 'player'] as const
 export type Role = (typeof ROLES)[number]
 
 /** Rechte je Rolle. „player“ sieht nur Inhalte mit visibility: players. */
 export const ROLE_SCOPES: Record<Role, Scope[]> = {
   admin: [...SCOPES],
+  member: [],
   editor: ['read', 'write', 'inbox', 'curate'],
   viewer: ['read'],
   player: ['read'],
 }
 
+/** So viele eigene Vaults darf ein Token ohne admin-Recht anlegen */
+export const MAX_OWNED_VAULTS = 20
+
 export const ROLE_LABELS: Record<Role, string> = {
   admin: 'Administration',
+  member: 'Mitglied',
   editor: 'Bearbeiten',
   viewer: 'Lesen',
   player: 'Spieler (nur Spieler-Inhalte)',
 }
 
+/** Rechte-Stufen einer Freigabe. Alle Zugänge werden über dieselben Scopes geprüft (siehe requireScope). */
+export const ACCESS_LEVELS = {
+  read: ['read'],
+  inbox: ['inbox'],
+  read_inbox: ['read', 'inbox'],
+  curate: ['read', 'inbox', 'curate'],
+  write: ['read', 'write', 'inbox'],
+  write_curate: ['read', 'write', 'inbox', 'curate'],
+  admin: ['read', 'write', 'inbox', 'curate', 'admin'],
+} as const satisfies Record<string, readonly Scope[]>
+export type AccessLevel = keyof typeof ACCESS_LEVELS
+
+/** Stufe, die klassische Scopes (scopes + vaults) in der Oberfläche darstellt */
+function levelOfScopes(scopes: Scope[]): AccessLevel | null {
+  const has = (s: Scope) => scopes.includes(s)
+  if (has('admin')) return 'admin'
+  if (has('write')) return has('curate') ? 'write_curate' : 'write'
+  if (has('curate')) return 'curate'
+  if (has('inbox')) return has('read') ? 'read_inbox' : 'inbox'
+  return has('read') ? 'read' : null
+}
+
 /**
- * Freigabe eines Notizbuchs (Vault) für einen API-Zugang: Lesen oder Schreiben,
- * optional beschränkt auf einen Bereich (Kampagne, Ordner, Typen).
+ * Freigabe eines Notizbuchs (Vault) für einen API-Zugang: eine Rechte-Stufe, optional beschränkt
+ * auf einen Bereich (Kampagne, Ordner, Typen). vault „*“ = alle Notizbücher.
  */
 export interface Grant {
   vault: string
-  access: 'read' | 'write'
+  access: AccessLevel
   /** Nur Einträge dieser Kampagne */
   campaign?: string | null
   /** Bei Kampagne: auch Einträge ohne Kampagne (z. B. allgemeine Welt-/Regelnotizen). Standard: ja */
@@ -51,14 +79,14 @@ export function grantRestricted(g: Grant | undefined | null): boolean {
 }
 
 /** Freigaben prüfen und vereinheitlichen */
-export function normalizeGrants(input: unknown): Grant[] {
+export function normalizeGrants(input: unknown, allowEmpty = false): Grant[] {
   if (!Array.isArray(input)) throw invalid('grants muss eine Liste sein.')
   const out: Grant[] = []
   for (const raw of input) {
     const g = raw as any
     const vault = String(g?.vault ?? '').trim()
     if (!vault) throw invalid('Jede Freigabe braucht ein Notizbuch (vault).')
-    if (g.access !== 'read' && g.access !== 'write') throw invalid('access muss "read" oder "write" sein.')
+    if (!Object.hasOwn(ACCESS_LEVELS, g.access)) throw invalid(`access muss eine von ${Object.keys(ACCESS_LEVELS).join(', ')} sein.`)
     if (out.some((x) => x.vault === vault)) throw invalid(`Notizbuch „${vault}“ ist doppelt freigegeben.`)
     const list = (v: unknown) =>
       (Array.isArray(v) ? v : typeof v === 'string' ? v.split(',') : [])
@@ -68,9 +96,14 @@ export function normalizeGrants(input: unknown): Grant[] {
     if (folders.some((f) => f.split('/').includes('..'))) throw invalid('Ungültiger Ordner.')
     const types = list(g.types)
     const campaign = g.campaign ? String(g.campaign).trim() : null
+    if (campaign || folders.length || types.length) {
+      // Kurator und Verwaltung sehen den ganzen Vault – das passt nicht zu einem Bereich
+      if (vault === '*') throw invalid('Eine Freigabe für alle Notizbücher kann nicht auf einen Bereich beschränkt werden.')
+      if ((ACCESS_LEVELS[g.access as AccessLevel] as readonly Scope[]).includes('curate')) throw invalid('Kurator- und Verwaltungsrechte gehen nicht zusammen mit einem Bereich.')
+    }
     out.push({ vault, access: g.access, ...(campaign ? { campaign, shared: g.shared !== false } : {}), ...(folders.length ? { folders } : {}), ...(types.length ? { types } : {}) })
   }
-  if (!out.length) throw invalid('Mindestens ein Notizbuch freigeben.')
+  if (!out.length && !allowEmpty) throw invalid('Mindestens ein Notizbuch freigeben.')
   return out
 }
 
@@ -85,8 +118,12 @@ export interface Principal {
   scopes: Scope[]
   visibility?: 'players' | null
   campaign?: string | null
-  /** Freigaben je Notizbuch (neue API-Zugänge) – haben Vorrang vor vaults/scopes/campaign */
+  /** Das eine Rechte-Modell: welche Rechte in welchem Vault („*“ = alle). Daraus prüft requireScope. */
+  access: { vault: string; rights: readonly Scope[] }[]
+  /** Freigaben je Notizbuch – liefern den Bereich (Kampagne, Ordner, Typen) */
   grants?: Grant[] | null
+  /** Vaults, die dieser Token selbst angelegt hat – dort hat er alle Rechte */
+  ownedVaults?: string[]
   tokenId?: string
   csrf?: string
 }
@@ -98,6 +135,7 @@ export interface UserRow {
   password_hash: string | null
   role: Role
   vaults: string
+  grants: string | null
   campaign: string | null
   disabled: number
   created: string
@@ -114,6 +152,10 @@ declare module 'fastify' {
   }
 }
 
+function userGrants(u: UserRow): Grant[] | null {
+  return u.role === 'member' ? json<Grant[]>(u.grants ?? '[]', []) : null
+}
+
 export function publicUser(u: UserRow) {
   return {
     id: u.id,
@@ -121,6 +163,9 @@ export function publicUser(u: UserRow) {
     display_name: u.display_name,
     role: u.role,
     vaults: json<string[] | '*'>(u.vaults, '*'),
+    grants: userGrants(u),
+    // Einheitliche Sicht auf die Rechte, auch bei Rollen
+    access: userGrants(u) ?? (json<string[] | '*'>(u.vaults, '*') === '*' ? ['*'] : json<string[]>(u.vaults, [])).map((vault) => ({ vault, access: levelOfScopes(ROLE_SCOPES[u.role]) ?? 'read', ...(u.campaign ? { campaign: u.campaign, shared: true } : {}) })),
     campaign: u.campaign,
     disabled: !!u.disabled,
     has_password: !!u.password_hash,
@@ -136,6 +181,8 @@ export interface UserInput {
   password?: string
   role?: Role
   vaults?: string[] | '*'
+  /** Rechte je Notizbuch, nur für die Rolle member */
+  grants?: unknown
   campaign?: string | null
   disabled?: boolean
 }
@@ -204,14 +251,15 @@ export class Auth {
     const id = ulid()
     const now = nowIso()
     this.db.run(
-      'INSERT INTO users (id, username, display_name, password_hash, role, vaults, campaign, disabled, created, updated) VALUES (?,?,?,?,?,?,?,?,?,?)',
+      'INSERT INTO users (id, username, display_name, password_hash, role, vaults, grants, campaign, disabled, created, updated) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
       id,
       input.username!,
       input.display_name ?? null,
       hash,
       input.role ?? 'viewer',
-      JSON.stringify(input.vaults ?? '*'),
-      input.campaign ?? null,
+      input.role === 'member' ? JSON.stringify(normalizeGrants(input.grants ?? [], true).map((g) => g.vault)) : JSON.stringify(input.vaults ?? '*'),
+      input.role === 'member' ? JSON.stringify(normalizeGrants(input.grants ?? [], true)) : null,
+      input.role === 'member' ? null : (input.campaign ?? null),
       input.disabled ? 1 : 0,
       now,
       now,
@@ -249,16 +297,24 @@ export class Auth {
       display_name: input.display_name !== undefined ? input.display_name : u.display_name,
       role: input.role ?? u.role,
       vaults: input.vaults !== undefined ? JSON.stringify(input.vaults) : u.vaults,
+      grants: null as string | null,
       campaign: input.campaign !== undefined ? input.campaign : u.campaign,
       disabled: input.disabled !== undefined ? (input.disabled ? 1 : 0) : u.disabled,
     }
+    if (next.role === 'member') {
+      const grants = normalizeGrants(input.grants ?? (u.role === 'member' ? json(u.grants ?? '[]', []) : []), true)
+      next.grants = JSON.stringify(grants)
+      next.vaults = JSON.stringify(grants.map((g) => g.vault))
+      next.campaign = null
+    }
     const hash = input.password ? await this.hashPassword(input.password) : u.password_hash
     this.db.run(
-      'UPDATE users SET username = ?, display_name = ?, role = ?, vaults = ?, campaign = ?, disabled = ?, password_hash = ?, updated = ? WHERE id = ?',
+      'UPDATE users SET username = ?, display_name = ?, role = ?, vaults = ?, grants = ?, campaign = ?, disabled = ?, password_hash = ?, updated = ? WHERE id = ?',
       next.username,
       next.display_name,
       next.role,
       next.vaults,
+      next.grants,
       next.campaign,
       next.disabled,
       hash,
@@ -266,7 +322,7 @@ export class Auth {
       id,
     )
     // Rechte geändert oder gesperrt → bestehende Sitzungen beenden (Passwort-Reset ebenso)
-    if (input.password || next.disabled || next.role !== u.role || next.vaults !== u.vaults) this.db.run('DELETE FROM sessions WHERE user_id = ?', id)
+    if (input.password || next.disabled || next.role !== u.role || next.vaults !== u.vaults || next.grants !== u.grants) this.db.run('DELETE FROM sessions WHERE user_id = ?', id)
     return publicUser(this.getUser(id))
   }
 
@@ -307,6 +363,24 @@ export class Auth {
   }
 
   private userPrincipal(u: UserRow, csrf: string): Principal {
+    const grants = userGrants(u)
+    if (grants) {
+      const access = grants.map((g) => ({ vault: g.vault, rights: ACCESS_LEVELS[g.access] as readonly Scope[] }))
+      return {
+        kind: 'session',
+        name: u.username,
+        userId: u.id,
+        role: u.role,
+        displayName: u.display_name ?? u.username,
+        vaults: grants.some((g) => g.vault === '*') ? '*' : grants.map((g) => g.vault),
+        scopes: [...new Set(access.flatMap((x) => x.rights))],
+        access,
+        grants,
+        visibility: null,
+        campaign: null,
+        csrf,
+      }
+    }
     return {
       kind: 'session',
       name: u.username,
@@ -315,6 +389,7 @@ export class Auth {
       displayName: u.display_name ?? u.username,
       vaults: json<string[] | '*'>(u.vaults, '*'),
       scopes: [...ROLE_SCOPES[u.role]],
+      access: accessOfVaults(json<string[] | '*'>(u.vaults, '*'), ROLE_SCOPES[u.role]),
       visibility: u.role === 'player' ? 'players' : null,
       campaign: u.campaign ?? null,
       csrf,
@@ -352,23 +427,32 @@ export class Auth {
     if (row.expires && row.expires < new Date().toISOString()) return null
     if (!row.last_used || Date.now() - Date.parse(row.last_used) > 60_000) this.db.run('UPDATE tokens SET last_used = ? WHERE id = ?', new Date().toISOString(), row.id)
     const grants = row.grants ? json<Grant[] | null>(row.grants, null) : null
+    const ownedVaults = json<string[]>(row.owned_vaults, [])
+    const stored = json<Scope[]>(row.scopes, [])
     if (grants?.length) {
+      const access = grants.map((g) => ({ vault: g.vault, rights: ACCESS_LEVELS[g.access] as readonly Scope[] }))
+      const owned = ownedVaults.map((vault) => ({ vault, rights: ACCESS_LEVELS.admin as readonly Scope[] }))
       return {
         kind: 'token',
         name: row.name,
-        vaults: grants.map((g) => g.vault),
-        scopes: grants.some((g) => g.access === 'write') ? ['read', 'write'] : ['read'],
-        visibility: row.visibility ?? null,
+        vaults: grants.some((g) => g.vault === '*') ? '*' : [...new Set([...grants.map((g) => g.vault), ...ownedVaults])],
+        scopes: [...new Set([...access.flatMap((x) => x.rights), ...stored.filter((s) => s === 'create_vault')])],
+        access: [...access, ...owned],
+        ownedVaults,
+      visibility: row.visibility ?? null,
         campaign: null,
         grants,
         tokenId: row.id,
       }
     }
+    const vaults = json<string[] | '*'>(row.vaults, [])
     return {
       kind: 'token',
       name: row.name,
-      vaults: json<string[] | '*'>(row.vaults, []),
-      scopes: json<Scope[]>(row.scopes, []),
+      vaults: vaults === '*' ? '*' : [...new Set([...vaults, ...ownedVaults])],
+      scopes: stored,
+      access: [...accessOfVaults(vaults, stored), ...ownedVaults.map((vault) => ({ vault, rights: ACCESS_LEVELS.admin as readonly Scope[] }))],
+      ownedVaults,
       visibility: row.visibility ?? null,
       campaign: row.campaign ?? null,
       tokenId: row.id,
@@ -386,9 +470,14 @@ export class Auth {
     kind?: string
   }) {
     if (!input.name?.trim()) throw new ApiError('validation_error', 'Name fehlt.')
-    const grants = input.grants !== undefined && input.grants !== null ? normalizeGrants(input.grants) : null
-    const scopes = grants ? [] : (input.scopes ?? []).filter((s) => (SCOPES as readonly string[]).includes(s))
+    const onlyCreate = input.scopes?.includes('create_vault') && Array.isArray(input.grants) && !input.grants.length
+    const grants = input.grants !== undefined && input.grants !== null && !onlyCreate ? normalizeGrants(input.grants) : null
+    const scopes = (input.scopes ?? []).filter((s) => (SCOPES as readonly string[]).includes(s) && (!grants || s === 'create_vault'))
     if (!grants && !scopes.length) throw new ApiError('validation_error', `Mindestens ein Scope nötig (${SCOPES.join(', ')}).`)
+    // Eigene Vaults hätten sonst Sichtbarkeit oder Kampagne ohne Sinn
+    if (scopes.includes('create_vault') && (input.visibility || input.campaign)) throw invalid('create_vault geht nicht zusammen mit visibility oder campaign.')
+    // Nur create_vault: sieht ausschließlich die eigenen Vaults, auch in der Vault-Liste
+    const vaults = scopes.length === 1 && scopes[0] === 'create_vault' && !grants ? [] : input.vaults
     const token = `bn_${randomToken(30)}`
     const id = ulid()
     this.db.run(
@@ -396,7 +485,7 @@ export class Auth {
       id,
       input.name.trim(),
       sha256(token),
-      JSON.stringify(grants ? grants.map((g) => g.vault) : (input.vaults ?? '*')),
+      JSON.stringify(grants ? grants.map((g) => g.vault) : (vaults ?? '*')),
       JSON.stringify(scopes),
       input.visibility ?? null,
       grants ? null : (input.campaign ?? null),
@@ -409,7 +498,7 @@ export class Auth {
       id,
       token,
       name: input.name.trim(),
-      vaults: grants ? grants.map((g) => g.vault) : input.vaults,
+      vaults: grants ? grants.map((g) => g.vault) : vaults,
       scopes,
       grants,
       expires: input.expires ?? null,
@@ -420,21 +509,65 @@ export class Auth {
 
   listTokens() {
     this.db.run("DELETE FROM tokens WHERE kind = 'embed' AND expires < ?", new Date().toISOString())
-    return this.db.all<any>('SELECT id, name, vaults, scopes, visibility, campaign, kind, created, expires, last_used, grants FROM tokens ORDER BY created DESC').map((r) => ({
-      ...r,
-      vaults: json(r.vaults, []),
-      scopes: json(r.scopes, []),
-      grants: r.grants ? json(r.grants, null) : null,
-    }))
+    return this.db.all<any>('SELECT id, name, vaults, scopes, visibility, campaign, kind, created, expires, last_used, grants, owned_vaults FROM tokens ORDER BY created DESC').map((r) => {
+      const grants = r.grants ? json<Grant[] | null>(r.grants, null) : null
+      const vaults = json<string[] | '*'>(r.vaults, [])
+      const scopes = json<Scope[]>(r.scopes, [])
+      const level = levelOfScopes(scopes)
+      return {
+        ...r,
+        vaults,
+        scopes,
+        grants,
+        owned_vaults: json(r.owned_vaults, []),
+        create_vault: scopes.includes('create_vault'),
+        // Einheitliche Sicht auf die Rechte, auch für klassisch angelegte Tokens
+        access: grants ?? (level ? (vaults === '*' ? ['*'] : vaults).map((vault) => ({ vault, access: level, ...(r.campaign ? { campaign: r.campaign, shared: true } : {}) })) : []),
+      }
+    })
   }
 
-  /** Freigaben eines bestehenden Zugangs ändern (der Token-Wert bleibt gleich) */
-  updateTokenGrants(id: string, grants: unknown) {
-    const row = this.db.get<any>('SELECT id FROM tokens WHERE id = ?', id)
+  /** Zugang nachträglich ändern (der Token-Wert bleibt gleich). Nicht für Embed- und Spieler-Links. */
+  updateToken(id: string, input: { name?: string; grants?: unknown; create_vault?: boolean; expires?: string | null }) {
+    const row = this.db.get<any>('SELECT * FROM tokens WHERE id = ?', id)
     if (!row) throw new ApiError('not_found', 'Token nicht gefunden.')
-    const g = normalizeGrants(grants)
-    this.db.run('UPDATE tokens SET grants = ?, vaults = ?, scopes = ?, campaign = NULL WHERE id = ?', JSON.stringify(g), JSON.stringify(g.map((x) => x.vault)), '[]', id)
+    if (row.kind !== 'api') throw new ApiError('conflict', 'Eingebettete Zugänge und Spieler-Links lassen sich nicht ändern, nur widerrufen.')
+    if (input.name !== undefined && !input.name.trim()) throw invalid('Name fehlt.')
+    const stored = json<Scope[]>(row.scopes, [])
+    const create = input.create_vault ?? stored.includes('create_vault')
+    if (create && row.visibility) throw invalid('create_vault geht nicht zusammen mit visibility oder campaign.')
+    const grants = input.grants !== undefined ? normalizeGrants(input.grants, create) : undefined
+    let scopes: Scope[] = stored.filter((s) => s !== 'create_vault')
+    if (grants) scopes = []
+    if (create) scopes = [...scopes, 'create_vault']
+    if (!grants && !row.grants && !scopes.length) throw invalid('Mindestens ein Notizbuch freigeben.')
+    if (grants === undefined && create && row.campaign) throw invalid('create_vault geht nicht zusammen mit visibility oder campaign.')
+    this.db.run(
+      'UPDATE tokens SET name = ?, expires = ?, scopes = ?, grants = ?, vaults = ?, campaign = ? WHERE id = ?',
+      input.name?.trim() ?? row.name,
+      input.expires !== undefined ? input.expires : row.expires,
+      JSON.stringify(scopes),
+      grants ? (grants.length ? JSON.stringify(grants) : null) : row.grants,
+      grants ? JSON.stringify(grants.map((g) => g.vault)) : row.vaults,
+      grants ? null : row.campaign,
+      id,
+    )
     return this.listTokens().find((t) => t.id === id)
+  }
+
+  /** Vault dem Token zuordnen, der ihn angelegt hat */
+  addOwnedVault(tokenId: string, vault: string) {
+    const row = this.db.get<any>('SELECT owned_vaults FROM tokens WHERE id = ?', tokenId)
+    if (!row) return
+    this.db.run('UPDATE tokens SET owned_vaults = ? WHERE id = ?', JSON.stringify([...new Set([...json<string[]>(row.owned_vaults, []), vault])]), tokenId)
+  }
+
+  /** Beim Löschen eines Vaults: Ein späterer Vault mit gleichem Namen gehört nicht automatisch dem alten Token */
+  forgetOwnedVault(vault: string) {
+    for (const row of this.db.all<any>("SELECT id, owned_vaults FROM tokens WHERE owned_vaults != '[]'")) {
+      const owned = json<string[]>(row.owned_vaults, [])
+      if (owned.includes(vault)) this.db.run('UPDATE tokens SET owned_vaults = ? WHERE id = ?', JSON.stringify(owned.filter((v) => v !== vault)), row.id)
+    }
   }
 
   deleteToken(id: string) {
@@ -460,25 +593,38 @@ export class Auth {
   }
 }
 
-/** Prüft Scope + Vault-Zugriff. `inbox` ist in `write` enthalten, `admin` umfasst alles. */
+function accessOfVaults(vaults: string[] | '*', scopes: readonly Scope[]) {
+  const rights = scopes.filter((s) => s !== 'create_vault')
+  return (vaults === '*' ? ['*'] : vaults).map((vault) => ({ vault, rights }))
+}
+
+/** `inbox` ist in `write` enthalten, `read` in `write` und `curate`, `admin` umfasst alles. */
+function rightsAllow(rights: readonly Scope[], scope: Scope): boolean {
+  const has = (s: Scope) => rights.includes(s)
+  return has('admin') || has(scope) || (scope === 'inbox' && has('write')) || (scope === 'read' && (has('write') || has('curate')))
+}
+
+/** Darf den Server verwalten (Benutzer, Tokens, Webhooks …): Admin-Konto oder Admin-Recht für alle Notizbücher */
+export function isServerAdmin(p: Principal): boolean {
+  return p.role === 'admin' || p.access.some((x) => x.vault === '*' && x.rights.includes('admin'))
+}
+
+/** Die eine Rechte-Prüfung für Konten und Tokens: Scope im Vault, ohne Vault serverweit. */
 export function requireScope(req: FastifyRequest, scope: Scope, vault?: string) {
   const p = req.principal
   if (!p) throw new ApiError('unauthorized', 'Anmeldung erforderlich.')
-  if (p.grants) {
-    // Zugang mit Freigaben je Notizbuch: nur Lesen/Schreiben, nie Kurator/Admin
-    if (!vault) {
-      if (scope === 'read') return
-      throw new ApiError('forbidden', `Fehlende Berechtigung: ${scope}.`)
-    }
-    const g = p.grants.find((x) => x.vault === vault)
-    if (!g) throw new ApiError('forbidden', `Kein Zugriff auf den Vault „${vault}“.`)
-    if (scope === 'read' || ((scope === 'write' || scope === 'inbox') && g.access === 'write')) return
-    throw new ApiError('forbidden', g.access === 'read' && (scope === 'write' || scope === 'inbox') ? 'Dieser Zugang darf nur lesen.' : `Fehlende Berechtigung: ${scope}.`)
+  if (scope === 'admin' || scope === 'create_vault') {
+    if (!vault && (isServerAdmin(p) || (scope === 'create_vault' && p.scopes.includes('create_vault')))) return
+    if (!vault) throw new ApiError('forbidden', `Fehlende Berechtigung: ${scope}.`)
   }
-  if (vault && p.vaults !== '*' && !p.vaults.includes(vault)) throw new ApiError('forbidden', `Kein Zugriff auf den Vault „${vault}“.`)
-  const has = (s: Scope) => p.scopes.includes(s)
-  const ok = has('admin') || has(scope) || (scope === 'inbox' && has('write')) || (scope === 'read' && (has('write') || has('curate')))
-  if (!ok) throw new ApiError('forbidden', `Fehlende Berechtigung: ${scope}.`)
+  if (!vault) {
+    if (p.access.some((x) => rightsAllow(x.rights, scope))) return
+    throw new ApiError('forbidden', `Fehlende Berechtigung: ${scope}.`)
+  }
+  const entries = p.access.filter((x) => x.vault === vault || x.vault === '*')
+  if (!entries.length) throw new ApiError('forbidden', `Kein Zugriff auf den Vault „${vault}“.`)
+  if (entries.some((x) => rightsAllow(x.rights, scope))) return
+  throw new ApiError('forbidden', p.grants && (scope === 'write' || scope === 'inbox') && entries.every((x) => !x.rights.includes('inbox')) ? 'Dieser Zugang darf nur lesen.' : `Fehlende Berechtigung: ${scope}.`)
 }
 
 /** Freigabe des Principals für einen Vault (nur bei Zugängen mit Freigaben) */

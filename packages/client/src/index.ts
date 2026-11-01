@@ -130,6 +130,9 @@ export class BasaltNotes {
   // ------------------------------------------------------------ Vaults
   vaults = {
     list: () => this.request<{ items: any[] }>('GET', '/vaults').then((r) => r.items),
+    /** Braucht admin oder create_vault; der anlegende Token hat im neuen Vault alle Rechte */
+    create: (vault: { name: string; preset?: 'empty' | 'notes' | 'dnd'; lang?: 'de' | 'en' }) => this.request<any>('POST', '/vaults', { body: vault }),
+    delete: (vault: string) => this.request<{ deleted: string }>('DELETE', `/vaults/${e(vault)}`),
     types: (vault: string) => this.request<{ items: any[] }>('GET', `/vaults/${e(vault)}/types`).then((r) => r.items),
   }
 

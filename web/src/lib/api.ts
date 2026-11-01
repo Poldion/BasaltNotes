@@ -137,10 +137,13 @@ export interface Me {
   name: string
   user_id: string | null
   display_name: string
-  role: 'admin' | 'editor' | 'viewer' | 'player' | null
+  role: 'admin' | 'member' | 'editor' | 'viewer' | 'player' | null
   roles: { name: string; label: string }[]
   vaults: string[] | '*'
   scopes: string[]
+  /** Rechte je Vault („*“ = alle) */
+  access?: { vault: string; rights: string[]; area?: boolean }[]
+  server_admin?: boolean
   visibility: 'players' | null
   campaign: string | null
   csrf: string | null

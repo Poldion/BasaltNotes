@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify'
-import { ROLES, ROLE_LABELS, ROLE_SCOPES, SCOPES, requireScope, setSessionCookie, SESSION_COOKIE, type Scope } from '../auth.js'
+import { ACCESS_LEVELS, grantRestricted, isServerAdmin, ROLES, ROLE_LABELS, ROLE_SCOPES, SCOPES, requireScope, setSessionCookie, SESSION_COOKIE, type Scope } from '../auth.js'
 import { loadConfig, readFileConfig, thinkMode, updateFileConfig } from '../config.js'
 import { THINK_MODES } from '../curator/llm.js'
 import { saveFeatures } from '../features.js'
@@ -11,7 +11,7 @@ const grantSchema = {
   type: 'object',
   properties: {
     vault: { type: 'string' },
-    access: { type: 'string', enum: ['read', 'write'] },
+    access: { type: 'string', enum: Object.keys(ACCESS_LEVELS) },
     campaign: { type: ['string', 'null'] },
     shared: { type: 'boolean' },
     folders: { type: 'array', items: { type: 'string' } },
@@ -196,6 +196,8 @@ export const registerSystem: Register = (app: FastifyInstance, s: Services) => {
       role: p.role ?? null,
       vaults: p.vaults,
       scopes: p.scopes,
+      access: p.access.map((x) => ({ ...x, area: grantRestricted(p.grants?.find((g) => g.vault === x.vault)) })),
+      server_admin: isServerAdmin(p),
       visibility: p.visibility ?? null,
       campaign: p.campaign ?? null,
       csrf: p.csrf ?? null,
@@ -248,6 +250,7 @@ export const registerSystem: Register = (app: FastifyInstance, s: Services) => {
       password: { type: 'string' },
       role: { type: 'string', enum: [...ROLES] },
       vaults: { anyOf: [{ type: 'array', items: { type: 'string' } }, { type: 'string', enum: ['*'] }] },
+      grants: { type: 'array', items: grantSchema },
       campaign: { type: ['string', 'null'] },
       disabled: { type: 'boolean' },
     },
@@ -258,16 +261,18 @@ export const registerSystem: Register = (app: FastifyInstance, s: Services) => {
     return { items: s.auth.listUsers(), roles: ROLES.map((r) => ({ name: r, label: ROLE_LABELS[r], scopes: ROLE_SCOPES[r] })) }
   })
 
-  app.post('/users', { schema: { tags: T.system, summary: 'Benutzer anlegen {username, password, role, vaults, campaign?, display_name?}', body: { ...userBody, required: ['username', 'password', 'role'] } } }, async (req, reply) => {
+  app.post('/users', { schema: { tags: T.system, summary: 'Benutzer anlegen {username, password, role, grants? (Rolle member), vaults?, campaign?, display_name?}', body: { ...userBody, required: ['username', 'password', 'role'] } } }, async (req, reply) => {
     requireScope(req, 'admin')
+    for (const g of (req.body as any).grants ?? []) if (g?.vault !== '*') s.vaults.get(String(g?.vault ?? ''))
     reply.code(201)
     return s.auth.createUser(req.body as any)
   })
 
-  app.patch('/users/:id', { schema: { tags: T.system, summary: 'Benutzer ändern (Rolle, Vaults, sperren, Passwort zurücksetzen)', body: userBody } }, async (req) => {
+  app.patch('/users/:id', { schema: { tags: T.system, summary: 'Benutzer ändern (Rolle, Rechte je Notizbuch, Vaults, sperren, Passwort zurücksetzen)', body: userBody } }, async (req) => {
     requireScope(req, 'admin')
     const id = (req.params as any).id
     const b = { ...(req.body as any) }
+    for (const g of b.grants ?? []) if (g?.vault !== '*') s.vaults.get(String(g?.vault ?? ''))
     if (id === req.principal!.userId && (b.disabled === true || (b.role && b.role !== 'admin'))) throw new ApiError('conflict', 'Das eigene Konto kann nicht gesperrt oder herabgestuft werden.')
     return s.auth.updateUser(id, b)
   })
@@ -293,7 +298,7 @@ export const registerSystem: Register = (app: FastifyInstance, s: Services) => {
       schema: {
         tags: T.system,
         summary:
-          'Token anlegen – entweder mit Freigaben je Notizbuch {name, grants: [{vault, access: read|write, campaign?, shared?, folders?, types?}]} oder klassisch {name, vaults, scopes, campaign?}. Das Token wird nur einmal angezeigt',
+          'Token anlegen mit Freigaben je Notizbuch {name, grants: [{vault (oder *), access: read|inbox|read_inbox|curate|write|write_curate|admin, campaign?, shared?, folders?, types?}], scopes?: [create_vault]}; weiterhin möglich: klassisch {name, vaults, scopes, campaign?}. Das Token wird nur einmal angezeigt',
         body: {
           type: 'object',
           properties: {
@@ -313,7 +318,7 @@ export const registerSystem: Register = (app: FastifyInstance, s: Services) => {
     async (req, reply) => {
       requireScope(req, 'admin')
       const b = req.body as any
-      if (Array.isArray(b.grants)) for (const g of b.grants) s.vaults.get(String(g?.vault ?? ''))
+      if (Array.isArray(b.grants)) for (const g of b.grants) if (g?.vault !== '*') s.vaults.get(String(g?.vault ?? ''))
       reply.code(201)
       return s.auth.createToken({ name: b.name, vaults: b.vaults ?? '*', scopes: b.scopes, grants: b.grants ?? undefined, expires: b.expires, visibility: b.visibility, campaign: b.campaign, kind: b.kind })
     },
@@ -324,15 +329,15 @@ export const registerSystem: Register = (app: FastifyInstance, s: Services) => {
     {
       schema: {
         tags: T.system,
-        summary: 'Freigaben eines Tokens ändern {grants} – der Token-Wert bleibt gleich (nur admin)',
-        body: { type: 'object', properties: { grants: { type: 'array', items: grantSchema } }, required: ['grants'] },
+        summary: 'Token ändern {name?, grants?, create_vault?, expires?} – der Token-Wert bleibt gleich (nur admin)',
+        body: { type: 'object', properties: { name: { type: 'string' }, grants: { type: 'array', items: grantSchema }, create_vault: { type: 'boolean' }, expires: { type: ['string', 'null'] } } },
       },
     },
     async (req) => {
       requireScope(req, 'admin')
       const b = req.body as any
-      for (const g of b.grants) s.vaults.get(String(g?.vault ?? ''))
-      return s.auth.updateTokenGrants((req.params as any).id, b.grants)
+      for (const g of b.grants ?? []) if (g?.vault !== '*') s.vaults.get(String(g?.vault ?? ''))
+      return s.auth.updateToken((req.params as any).id, b)
     },
   )
 

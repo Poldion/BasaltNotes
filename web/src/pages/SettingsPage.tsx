@@ -7,14 +7,6 @@ import { Modal, Spinner, fmtDateTime, relTime, useConfirm } from '../lib/ui'
 import { tr } from '../lib/i18n'
 import { Icon } from '../components/Icon'
 
-const SCOPES: [string, string][] = [
-  ['read', tr('Lesen')],
-  ['write', tr('Schreiben')],
-  ['inbox', tr('Nur Eingang')],
-  ['curate', tr('Kurator')],
-  ['admin', tr('Admin')],
-]
-
 export function SettingsPage() {
   const { isAdmin, features } = useApp()
   // Nach dem Speichern der LLM-Einstellungen den Systemstatus neu laden
@@ -102,12 +94,16 @@ interface User {
   display_name: string | null
   role: string
   vaults: string[] | '*'
+  access: Grant[]
   campaign: string | null
   disabled: boolean
   last_login: string | null
 }
 
-type UserEdit = Partial<User> & { password?: string; isNew?: boolean }
+type UserEdit = Partial<User> & { password?: string; isNew?: boolean; grants?: Grant[] }
+
+/** Rollen zur Auswahl; die älteren „Bearbeiten“ und „Lesen“ sind jetzt Stufen je Notizbuch */
+const ACCOUNT_ROLES = ['admin', 'member', 'player']
 
 function UsersCard() {
   const { me, vaults, toast } = useApp()
@@ -125,6 +121,7 @@ function UsersCard() {
   }, [])
   useEffect(load, [load])
   const roleLabel = (r: string) => roles.find((x) => x.name === r)?.label ?? r
+  const vaultName = (id: string) => (id === '*' ? tr('Alle Notizbücher') : (vaults.find((v) => v.id === id)?.name ?? id))
 
   const save = async () => {
     if (!edit) return
@@ -132,8 +129,7 @@ function UsersCard() {
       username: edit.username,
       display_name: edit.display_name || null,
       role: edit.role,
-      vaults: edit.vaults ?? '*',
-      campaign: edit.role === 'player' ? edit.campaign || null : null,
+      ...(edit.role === 'member' ? { grants: edit.grants ?? [] } : { vaults: edit.vaults ?? '*', campaign: edit.role === 'player' ? edit.campaign || null : null }),
     }
     if (edit.password) body.password = edit.password
     try {
@@ -170,12 +166,12 @@ function UsersCard() {
     <section className="card stack" id="users">
       <div className="card-title" style={{ marginBottom: 0 }}>
         {tr('Benutzer')}
-        <button className="btn small primary" style={{ marginLeft: 'auto' }} onClick={() => setEdit({ isNew: true, role: 'editor', vaults: '*', username: '', password: '' })}>
+        <button className="btn small primary" style={{ marginLeft: 'auto' }} onClick={() => setEdit({ isNew: true, role: 'member', grants: [], vaults: '*', username: '', password: '' })}>
           {tr('+ Benutzer')}
         </button>
       </div>
       <p className="small muted" style={{ margin: 0 }}>
-        {tr('Rollen:')}{' '}<strong>{tr('Administration')}</strong> {tr('(alles inkl. Benutzer und Tokens) ·')}{' '}<strong>{tr('Bearbeiten')}</strong> {tr('(Notizen, Eingang, Kurator) ·')}{' '}<strong>{tr('Lesen')}</strong> · <strong>{tr('Spieler')}</strong> {tr('(nur Inhalte mit')}{' '}<code>{tr('visibility: players')}</code>{tr(', optional auf eine Kampagne beschränkt).')}
+        <strong>{tr('Administration')}</strong> {tr('darf alles inkl. Benutzer und Tokens.')}{' '}<strong>{tr('Mitglied')}</strong> {tr('bekommt je Notizbuch eine Rechte-Stufe wie ein Token.')}{' '}<strong>{tr('Spieler')}</strong> {tr('sieht nur Inhalte mit')}{' '}<code>{tr('visibility: players')}</code>{tr(', optional nur eine Kampagne.')}
       </p>
       {items === null ? (
         <Spinner />
@@ -186,7 +182,7 @@ function UsersCard() {
               <tr>
                 <th>{tr('Benutzer')}</th>
                 <th>{tr('Rolle')}</th>
-                <th>{tr('Vaults')}</th>
+                <th>{tr('Rechte')}</th>
                 <th>{tr('Zuletzt angemeldet')}</th>
                 <th />
               </tr>
@@ -203,18 +199,19 @@ function UsersCard() {
                   </td>
                   <td className="small">
                     <span className={`chip ${u.role === 'admin' ? 'accent' : u.role === 'player' ? 'dm' : ''}`}>{roleLabel(u.role)}</span>
-                    {u.campaign && <div className="faint">{u.campaign}</div>}
                     {u.disabled && (
                       <div>
                         <span className="chip danger">{tr('gesperrt')}</span>
                       </div>
                     )}
                   </td>
-                  <td className="small">{u.vaults === '*' ? tr('alle') : u.vaults.join(', ')}</td>
+                  <td className="small">
+                    {u.access.length ? u.access.map((g) => <div key={g.vault}>{grantSummary(g, vaultName)}</div>) : <span className="faint">{tr('keine')}</span>}
+                  </td>
                   <td className="small faint">{u.last_login ? relTime(u.last_login) : tr('nie')}</td>
                   <td>
                     <div className="row" style={{ flexWrap: 'nowrap' }}>
-                      <button className="btn small" onClick={() => setEdit({ ...u, password: '' })}>
+                      <button className="btn small" onClick={() => setEdit({ ...u, password: '', role: u.role === 'editor' || u.role === 'viewer' ? 'member' : u.role, grants: u.access })}>
                         {tr('Bearbeiten')}
                       </button>
                       {u.id !== me?.user_id && (
@@ -268,30 +265,37 @@ function UsersCard() {
             <label className="field">
               <span>{tr('Rolle')}</span>
               <select className="input" value={edit.role} disabled={edit.id === me?.user_id} onChange={(e) => setEdit({ ...edit, role: e.target.value })}>
-                {roles.map((r) => (
+                {roles.filter((r) => ACCOUNT_ROLES.includes(r.name)).map((r) => (
                   <option key={r.name} value={r.name}>
                     {r.label}
                   </option>
                 ))}
               </select>
             </label>
-            <div className="field">
-              <span>{tr('Vaults')}</span>
-              <div className="row small">
-                <label className="row" style={{ gap: 4 }}>
-                  <input type="checkbox" checked={allVaults} onChange={(e) => setEdit({ ...edit, vaults: e.target.checked ? '*' : [] })} /> {tr('alle')}
-                </label>
-                {!allVaults &&
-                  vaults.map((v) => {
-                    const list = (edit.vaults as string[]) ?? []
-                    return (
-                      <label key={v.id} className="row" style={{ gap: 4 }}>
-                        <input type="checkbox" checked={list.includes(v.id)} onChange={(e) => setEdit({ ...edit, vaults: e.target.checked ? [...list, v.id] : list.filter((x) => x !== v.id) })} /> {v.name}
-                      </label>
-                    )
-                  })}
+            {edit.role === 'member' ? (
+              <div className="field">
+                <span>{tr('Rechte')}</span>
+                <GrantEditor value={edit.grants ?? []} onChange={(g) => setEdit({ ...edit, grants: g })} />
               </div>
-            </div>
+            ) : (
+              <div className="field">
+                <span>{tr('Vaults')}</span>
+                <div className="row small">
+                  <label className="row" style={{ gap: 4 }}>
+                    <input type="checkbox" checked={allVaults} onChange={(e) => setEdit({ ...edit, vaults: e.target.checked ? '*' : [] })} /> {tr('alle')}
+                  </label>
+                  {!allVaults &&
+                    vaults.map((v) => {
+                      const list = (edit.vaults as string[]) ?? []
+                      return (
+                        <label key={v.id} className="row" style={{ gap: 4 }}>
+                          <input type="checkbox" checked={list.includes(v.id)} onChange={(e) => setEdit({ ...edit, vaults: e.target.checked ? [...list, v.id] : list.filter((x) => x !== v.id) })} /> {v.name}
+                        </label>
+                      )
+                    })}
+                </div>
+              </div>
+            )}
             {edit.role === 'player' && (
               <label className="field">
                 <span>{tr('Nur Kampagne (optional)')}</span>
@@ -376,16 +380,13 @@ function TokensCard() {
   const { vaults, toast } = useApp()
   const [items, setItems] = useState<any[] | null>(null)
   const [name, setName] = useState('')
-  const [scopes, setScopes] = useState<Set<string>>(new Set(['read', 'inbox']))
-  const [sel, setSel] = useState<Set<string>>(new Set())
   const [expires, setExpires] = useState('')
   const [created, setCreated] = useState<string | null>(null)
-  /** Zugang für eine App (Freigaben je Notizbuch) oder klassisch (Rechte für alle gewählten Vaults, z. B. Eingang für WhisperNotes) */
-  const [mode, setMode] = useState<'grants' | 'scopes'>('grants')
+  const [grantsCreate, setGrantsCreate] = useState(false)
   const [grants, setGrants] = useState<Grant[]>([])
-  const [editing, setEditing] = useState<{ id: string; name: string; grants: Grant[] } | null>(null)
+  const [editing, setEditing] = useState<{ id: string; name: string; grants: Grant[]; create_vault: boolean; expires: string } | null>(null)
   const { confirm, el } = useConfirm()
-  const vaultName = (id: string) => vaults.find((v) => v.id === id)?.name ?? id
+  const vaultName = (id: string) => (id === '*' ? tr('Alle Notizbücher') : (vaults.find((v) => v.id === id)?.name ?? id))
   const load = useCallback(() => {
     api<{ items: any[] }>('/tokens')
       .then((r) => setItems(r.items))
@@ -396,11 +397,12 @@ function TokensCard() {
     try {
       const exp = expires ? new Date(expires).toISOString() : null
       const r = await api<{ token: string }>('/tokens', {
-        body: mode === 'grants' ? { name, grants, expires: exp } : { name, scopes: [...scopes], vaults: sel.size ? [...sel] : '*', expires: exp },
+        body: { name, grants, scopes: grantsCreate ? ['create_vault'] : [], expires: exp },
       })
       setCreated(r.token)
       setName('')
       setGrants([])
+      setGrantsCreate(false)
       load()
     } catch (e) {
       toast((e as Error).message, 'error')
@@ -409,8 +411,8 @@ function TokensCard() {
   const saveGrants = async () => {
     if (!editing) return
     try {
-      await api(`/tokens/${enc(editing.id)}`, { method: 'PATCH', body: { grants: editing.grants } })
-      toast(tr('Freigaben gespeichert'), 'success')
+      await api(`/tokens/${enc(editing.id)}`, { method: 'PATCH', body: { name: editing.name, grants: editing.grants, create_vault: editing.create_vault, expires: editing.expires ? new Date(editing.expires).toISOString() : null } })
+      toast(tr('Rechte gespeichert'), 'success')
       setEditing(null)
       load()
     } catch (e) {
@@ -422,19 +424,13 @@ function TokensCard() {
     await api(`/tokens/${enc(t.id)}`, { method: 'DELETE' })
     load()
   }
-  const flip = (s: Set<string>, v: string) => {
-    const n = new Set(s)
-    if (n.has(v)) n.delete(v)
-    else n.add(v)
-    return n
-  }
   return (
     <section className="card stack">
       <div className="card-title" style={{ marginBottom: 0 }}>
         {tr('API-Tokens')}
       </div>
       <p className="small muted" style={{ margin: 0 }}>
-        {tr('Für andere Apps:')}{' '}<code>{tr('Authorization: Bearer <token>')}</code>{tr('. Ein')}{' '}<em>{tr('Zugang für eine App')}</em> {tr('bekommt je Notizbuch Lesen oder Schreiben, optional nur für eine Kampagne, bestimmte Typen oder Ordner (z. B. D&D-Tool: Regarion, nur lesen). WhisperNotes braucht klassisch')}{' '}<em>{tr('Nur Eingang')}</em> + <em>{tr('Lesen')}</em>.
+        {tr('Für andere Apps:')}{' '}<code>{tr('Authorization: Bearer <token>')}</code>{tr('. Ein Token bekommt je Notizbuch eine Rechte-Stufe, optional nur für eine Kampagne, bestimmte Typen oder Ordner. Die Rechte lassen sich jederzeit ändern, der Token-Wert bleibt gleich.')}
       </p>
       {items === null ? (
         <Spinner />
@@ -444,7 +440,7 @@ function TokensCard() {
             <thead>
               <tr>
                 <th>{tr('Name')}</th>
-                <th>{tr('Freigaben')}</th>
+                <th>{tr('Rechte')}</th>
                 <th>{tr('Zuletzt benutzt')}</th>
                 <th />
               </tr>
@@ -459,21 +455,16 @@ function TokensCard() {
                     {t.expires && <div className="small faint">{tr('läuft ab {x}', { x: fmtDateTime(t.expires) })}</div>}
                   </td>
                   <td className="small">
-                    {t.grants ? (
-                      t.grants.map((g: Grant) => <div key={g.vault}>{grantSummary(g, vaultName)}</div>)
-                    ) : (
-                      <>
-                        {t.vaults === '*' ? tr('alle Vaults') : t.vaults.map(vaultName).join(', ')}: {t.scopes.join(', ')}
-                        {t.campaign ? tr(' – Kampagne {campaign}', { campaign: t.campaign }) : ''}
-                      </>
-                    )}
+                    {t.access.map((g: Grant) => <div key={g.vault}>{grantSummary(g, vaultName)}</div>)}
+                    {t.create_vault && <div>{tr('Darf eigene Vaults anlegen')}</div>}
+                    {t.owned_vaults?.length > 0 && <div>{tr('Eigene Vaults: {list}', { list: t.owned_vaults.map(vaultName).join(', ') })}</div>}
                   </td>
                   <td className="small faint">{t.last_used ? relTime(t.last_used) : tr('nie')}</td>
                   <td>
                     <div className="row" style={{ gap: 4, justifyContent: 'flex-end' }}>
-                      {t.kind === 'api' && t.grants && (
-                        <button className="btn small" onClick={() => setEditing({ id: t.id, name: t.name, grants: t.grants ?? [] })}>
-                          {tr('Freigaben')}
+                      {t.kind === 'api' && (
+                        <button className="btn small" onClick={() => setEditing({ id: t.id, name: t.name, grants: t.access, create_vault: t.create_vault, expires: t.expires ? t.expires.slice(0, 10) : '' })}>
+                          {tr('Rechte')}
                         </button>
                       )}
                       <button className="btn small danger" onClick={() => revoke(t)}>
@@ -494,52 +485,26 @@ function TokensCard() {
             {tr('Läuft ab')}{' '}<input className="input" type="date" style={{ width: 'auto' }} value={expires} onChange={(e) => setExpires(e.target.value)} />
           </label>
         </div>
-        <div className="tabs" style={{ alignSelf: 'flex-start' }}>
-          <button className={mode === 'grants' ? 'active' : ''} onClick={() => setMode('grants')}>
-            {tr('Zugang für eine App')}
-          </button>
-          <button className={mode === 'scopes' ? 'active' : ''} onClick={() => setMode('scopes')}>
-            {tr('Klassisch (Eingang, Kurator, Admin)')}
-          </button>
-        </div>
-        {mode === 'grants' ? (
-          <GrantEditor value={grants} onChange={setGrants} />
-        ) : (
-          <>
-            <div className="row small">
-              <span className="muted">{tr('Rechte:')}</span>
-              {SCOPES.map(([v, l]) => (
-                <label key={v} className="row" style={{ gap: 4 }}>
-                  <input type="checkbox" checked={scopes.has(v)} onChange={() => setScopes(flip(scopes, v))} /> {l}
-                </label>
-              ))}
-            </div>
-            <div className="row small">
-              <span className="muted">{tr('Vaults (leer = alle):')}</span>
-              {vaults.map((v) => (
-                <label key={v.id} className="row" style={{ gap: 4 }}>
-                  <input type="checkbox" checked={sel.has(v.id)} onChange={() => setSel(flip(sel, v.id))} /> {v.name}
-                </label>
-              ))}
-            </div>
-          </>
-        )}
+        <GrantEditor value={grants} onChange={setGrants} />
+        <label className="row small" style={{ gap: 4 }}>
+          <input type="checkbox" checked={grantsCreate} onChange={(e) => setGrantsCreate(e.target.checked)} /> {tr('Darf eigene Vaults anlegen')}
+        </label>
         <div>
-          <button className="btn primary" disabled={!name.trim() || (mode === 'grants' ? !grants.length : !scopes.size)} onClick={create}>
+          <button className="btn primary" disabled={!name.trim() || (!grants.length && !grantsCreate)} onClick={create}>
             {tr('Token erstellen')}
           </button>
         </div>
       </div>
       {editing && (
         <Modal
-          title={tr('Freigaben: {name}', { name: editing.name })}
+          title={tr('Rechte: {name}', { name: editing.name })}
           onClose={() => setEditing(null)}
           footer={
             <>
               <button className="btn" onClick={() => setEditing(null)}>
                 {tr('Abbrechen')}
               </button>
-              <button className="btn primary" disabled={!editing.grants.length} onClick={saveGrants}>
+              <button className="btn primary" disabled={!editing.name.trim() || (!editing.grants.length && !editing.create_vault)} onClick={saveGrants}>
                 {tr('Speichern')}
               </button>
             </>
@@ -547,7 +512,16 @@ function TokensCard() {
         >
           <div className="modal-body stack">
             <div className="small muted">{tr('Der Token-Wert bleibt gleich – die App muss nicht neu eingerichtet werden.')}</div>
+            <div className="row">
+              <input className="input" style={{ maxWidth: 260 }} aria-label={tr('Name')} value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
+              <label className="row small">
+                {tr('Läuft ab')}{' '}<input className="input" type="date" style={{ width: 'auto' }} value={editing.expires} onChange={(e) => setEditing({ ...editing, expires: e.target.value })} />
+              </label>
+            </div>
             <GrantEditor value={editing.grants} onChange={(g) => setEditing({ ...editing, grants: g })} />
+            <label className="row small" style={{ gap: 4 }}>
+              <input type="checkbox" checked={editing.create_vault} onChange={(e) => setEditing({ ...editing, create_vault: e.target.checked })} /> {tr('Darf eigene Vaults anlegen')}
+            </label>
           </div>
         </Modal>
       )}
@@ -938,9 +912,20 @@ export function LlmCard({ onSaved }: { onSaved: () => void }) {
 
 // ------------------------------------------------------------ Freigaben je Notizbuch (API-Zugänge)
 
+/** Rechte-Stufen, gleiche Namen wie auf dem Server */
+const ACCESS_LABELS: Record<string, string> = {
+  read: tr('nur lesen'),
+  inbox: tr('Nur Eingang'),
+  read_inbox: tr('Lesen + Eingang'),
+  curate: tr('Lesen + Kurator'),
+  write: tr('lesen + schreiben'),
+  write_curate: tr('Schreiben + Kurator'),
+  admin: tr('Verwalten'),
+}
+
 interface Grant {
   vault: string
-  access: 'read' | 'write'
+  access: string
   campaign?: string | null
   shared?: boolean
   folders?: string[]
@@ -952,7 +937,7 @@ function grantSummary(g: Grant, vaultName: (id: string) => string): string {
   const area = [g.campaign ? tr('Kampagne {campaign}{x}', { campaign: g.campaign, x: g.shared === false ? '' : tr(' (+ ohne Kampagne)') }) : '', g.types?.length ? g.types.join(', ') : '', g.folders?.length ? tr('Ordner {x}', { x: g.folders.join(', ') }) : '']
     .filter(Boolean)
     .join(' · ')
-  return `${vaultName(g.vault)}: ${g.access === 'write' ? tr('lesen + schreiben') : 'nur lesen'}${area ? ` – ${area}` : ''}`
+  return `${vaultName(g.vault)}: ${ACCESS_LABELS[g.access] ?? g.access}${area ? ` – ${area}` : ''}`
 }
 
 /** Editor: welche Notizbücher, lesen/schreiben, optional Bereich (Kampagne, Typen, Ordner) */
@@ -963,6 +948,7 @@ function GrantEditor({ value, onChange }: { value: Grant[]; onChange: (g: Grant[
 
   useEffect(() => {
     for (const g of value) {
+      if (g.vault === '*') continue
       if (!types[g.vault])
         api<{ items: { name: string; label: string }[] }>(`/vaults/${enc(g.vault)}/types`)
           .then((r) => setTypes((t) => ({ ...t, [g.vault]: r.items })))
@@ -984,7 +970,7 @@ function GrantEditor({ value, onChange }: { value: Grant[]; onChange: (g: Grant[
 
   return (
     <div className="stack" style={{ gap: 8 }}>
-      {vaults.map((v) => {
+      {[{ id: '*', name: tr('Alle Notizbücher') }, ...vaults].map((v) => {
         const g = value.find((x) => x.vault === v.id)
         const restricted = !!g && (!!g.campaign || !!g.types?.length || !!g.folders?.length)
         return (
@@ -995,14 +981,17 @@ function GrantEditor({ value, onChange }: { value: Grant[]; onChange: (g: Grant[
                 <strong>{v.name}</strong>
               </label>
               {g && (
-                <select className="input" style={{ width: 'auto' }} value={g.access} onChange={(e) => set(v.id, { access: e.target.value as Grant['access'] })}>
-                  <option value="read">{tr('nur lesen')}</option>
-                  <option value="write">{tr('lesen + schreiben')}</option>
+                <select className="input" style={{ width: 'auto' }} aria-label={tr('Rechte')} value={g.access} onChange={(e) => set(v.id, { access: e.target.value })}>
+                  {Object.entries(ACCESS_LABELS).map(([k, label]) => (
+                    <option key={k} value={k} disabled={restricted && (k === 'curate' || k === 'write_curate' || k === 'admin')}>
+                      {label}
+                    </option>
+                  ))}
                 </select>
               )}
-              {g && !restricted && <span className="small faint">{tr('ganzes Notizbuch')}</span>}
+              {g && !restricted && v.id !== '*' && <span className="small faint">{tr('ganzes Notizbuch')}</span>}
             </div>
-            {g && (
+            {g && v.id !== '*' && !['curate', 'write_curate', 'admin'].includes(g.access) && (
               <div className="grant-area">
                 {(campaigns[v.id]?.length ?? 0) > 0 && (
                   <label className="row small" style={{ gap: 6 }}>

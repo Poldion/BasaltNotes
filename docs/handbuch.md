@@ -32,7 +32,7 @@ und lässt sich parallel in Obsidian öffnen.
 | **KI-Kurator** | Erkennen → Abgleichen → Planen → Anwenden/Vorschlagen; Regeln je Vault; Trockenlauf; Fortschrittsanzeige mit Stopp-Knopf; „Lauf rückgängig“ |
 | **Dokumente** | PDF, Word, Text und Markdown in den Eingang hochladen: Text wird ausgelesen, Original als Anhang abgelegt, der Kurator sortiert ein |
 | **Vorbereitung** | Typ „Skript (Vorbereitung)“ für Pre-Game-Skripte: eigener Ordner, Vorlage mit Szenen und Geheimnissen, Status geplant/gespielt/verworfen, nur für den DM; auf der Kampagnenseite unter „Vorbereitung“ |
-| **Benutzer** | Mehrere Konten mit Rollen (Admin, Bearbeiten, Lesen, Spieler), Vault-Zugriff je Konto, Sperren, Passwort-Reset |
+| **Benutzer** | Mehrere Konten (Admin, Mitglied mit Rechten je Notizbuch, Spieler), Sperren, Passwort-Reset |
 | **Kampagnen** | Startseite mit „Was bisher geschah“, Timeline, offene Quests, Charaktere, zuletzt geänderte Einträge, Spieler-Sicht |
 | **Einbindung** | REST-API, OpenAPI, Server-Sent Events, Webhooks (HMAC-signiert), iframe-Einbettungen mit `postMessage`, JS-SDK |
 | **Oberfläche** | Deutsch und Englisch (Umschalter DE/EN unten in der Seitenleiste), Hell/Dunkel, bis Handybreite, installierbar als PWA (Offline-Lesen), Graph-Ansicht |
@@ -82,6 +82,7 @@ Umgebungsvariablen haben Vorrang vor `/data/config.yaml`.
 |---|---|---|
 | `ADMIN_PASSWORD` | – | Passwort des ersten Benutzers (nur wenn noch kein Benutzer existiert) |
 | `ADMIN_USER` | `admin` | Name des ersten Benutzers |
+| `create_vault` | Vaults anlegen. Der anlegende Token hat im neuen Vault alle Rechte, und nur dort (bis zu 20 eigene Vaults) |
 | `ADMIN_PASSWORD_RESET` | `false` | `true`: setzt das Passwort von `ADMIN_USER` beim Start auf `ADMIN_PASSWORD` (Notfall) |
 | `FEATURE_CURATOR` / `FEATURE_CHAT` | `false` | KI-Kurator bzw. KI-Chat beim **ersten** Start einschalten. Danach gilt der Schalter unter Einstellungen → Funktionen (gespeichert in `config.yaml`). Bestehende Installationen, die den Kurator schon benutzen, behalten ihn beim Update |
 | `LLM_URL` | `http://localhost:11434` | Ollama bzw. Ollama-Proxy für Kurator und Chat (im Container meist `http://<ollama-host>:11434`); lässt sich auch unter Einstellungen → „LLM-Server und Modell“ ändern |
@@ -135,11 +136,11 @@ Apps-Pool und wird von dessen Snapshots erfasst.
 | Rolle | Darf |
 |---|---|
 | **Administration** | alles, inkl. Benutzer, Tokens, Webhooks, Vault-Einstellungen |
-| **Bearbeiten** | Notizen lesen/schreiben, Eingang, Kurator-Vorschläge annehmen, Läufe rückgängig machen |
-| **Lesen** | alles lesen |
+| **Mitglied** | je Notizbuch eine Rechte-Stufe wie bei Tokens (siehe „Freigaben je Notizbuch“), optional nur ein Bereich |
 | **Spieler** | nur Notizen und Bereiche mit `visibility: players`, optional nur eine Kampagne; kein Eingang/Kurator |
 
-Jedes Konto kann auf einzelne Vaults beschränkt werden. Gesperrte Konten und Konten mit geänderten Rechten
+Die älteren Rollen **Bearbeiten** (`editor`) und **Lesen** (`viewer`) laufen weiter und werden beim Bearbeiten zu Mitgliedern
+mit derselben Stufe. Konten mit Administration und Spieler lassen sich auf einzelne Vaults beschränken. Gesperrte Konten und Konten mit geänderten Rechten
 werden sofort abgemeldet. Der letzte Admin kann weder gelöscht noch herabgestuft werden.
 Passwörter werden mit Argon2 gespeichert, Tokens nur als Hash.
 
@@ -301,7 +302,7 @@ Hintergrund. Gleiche `source.key` → Beiträge werden ersetzt. Whisper-Glossar:
 
 ### Home Assistant
 
-**1. Zugang anlegen:** Einstellungen → API-Tokens → *Zugang für eine App*, z. B. „Home Assistant“: Notizbuch
+**1. Zugang anlegen:** Einstellungen → API-Tokens → neuer Token, z. B. „Home Assistant“: Notizbuch
 „Notizen“ mit *lesen + schreiben* (für D&D-Termine optional „DnD“ mit *nur lesen*). Das Token in
 `secrets.yaml` ablegen:
 
@@ -449,6 +450,10 @@ Tokens und Benutzer können auf einzelne Vaults beschränkt sein. Tokens/Konten 
 auf Eingang, Vorschläge und Kurator-Läufe. Rollen der Benutzerkonten: `admin` (alle Scopes),
 `editor` (`read`, `write`, `inbox`, `curate`), `viewer` (`read`), `player` (`read` + Spieler-Sicht). Sichtbarkeit (`visibility`) gibt es nur in D&D-Vaults.
 
+Andere Projekte können so ein eigenes Vault bekommen: Token mit `{"name": "MeineApp", "scopes": ["create_vault"]}` anlegen, die App ruft dann
+`POST /vaults` mit `{"name": "MeineApp"}` auf (`409` = Name vergeben, vorher `GET /vaults` prüfen). Die App sieht nur ihre eigenen Vaults, außer sie
+hat weitere Rechte oder Freigaben. Wird das Vault gelöscht, endet die Zuordnung.
+
 #### Fehlerformat
 
 ```json
@@ -503,8 +508,8 @@ auf Eingang, Vorschläge und Kurator-Läufe. Rollen der Benutzerkonten: `admin` 
 | Methode | Pfad | Scope | Zweck |
 |---|---|---|---|
 | GET | `/users` | admin | Alle Benutzer + verfügbare Rollen |
-| POST | `/users` | admin | Anlegen `{username, password, role, vaults?, campaign?, display_name?}` |
-| PATCH | `/users/{id}` | admin | Ändern: `role`, `vaults`, `campaign`, `display_name`, `disabled`, `password` (Reset) |
+| POST | `/users` | admin | Anlegen `{username, password, role, grants? (Rolle `member`), vaults?, campaign?, display_name?}` |
+| PATCH | `/users/{id}` | admin | Ändern: `role`, `grants`, `vaults`, `campaign`, `display_name`, `disabled`, `password` (Reset) |
 | DELETE | `/users/{id}` | admin | Löschen (nicht das eigene Konto, nicht den letzten Admin) |
 
 `vaults` ist `"*"` oder eine Liste von Vault-IDs. Benutzername: 2–63 Zeichen (`a-z 0-9 . _ @ -`),
@@ -515,15 +520,28 @@ Passwort mindestens 8 Zeichen.
 | Methode | Pfad | Scope | Zweck |
 |---|---|---|---|
 | GET | `/tokens` | admin | Tokens (ohne Geheimnis) mit „zuletzt benutzt“ |
-| POST | `/tokens` | admin | Zugang für eine App: `{name, grants: [Freigabe], expires?}` · klassisch: `{name, scopes, vaults?, expires?, visibility?: "players", campaign?}` → `{token, …}` – **das Token wird nur einmal angezeigt** |
+| POST | `/tokens` | admin | `{name, grants: [Freigabe], scopes?: ["create_vault"], expires?}` · weiterhin möglich, klassisch: `{name, scopes, vaults?, expires?, visibility?: "players", campaign?}` → `{token, …}` – **das Token wird nur einmal angezeigt** |
 | PATCH | `/tokens/{id}` | admin | Freigaben ändern `{grants}` – der Token-Wert bleibt gleich |
 | POST | `/tokens/embed` | `read`/`write` im Vault | Kurzlebiges Token für Einbettungen `{vault, scope?: "read"\|"write", ttl? (s, Standard 3600, max. 7 Tage), visibility?, campaign?}` |
 | DELETE | `/tokens/{id}` | admin | Widerrufen |
 
-Beispiel WhisperNotes (klassisch): `{"name": "WhisperNotes", "scopes": ["inbox", "read"], "vaults": ["dnd", "notizen"]}`.
+Beispiel WhisperNotes: `{"name": "WhisperNotes", "grants": [{"vault": "dnd", "access": "read_inbox"}, {"vault": "notizen", "access": "read_inbox"}]}`.
 
-**Freigaben je Notizbuch** (Einstellungen → API-Tokens → *Zugang für eine App*): Jede Freigabe nennt ein Notizbuch
-und ob der Zugang nur **lesen** oder **lesen + schreiben** darf – optional beschränkt auf einen **Bereich**:
+**Freigaben je Notizbuch** (Einstellungen → API-Tokens): Jede Freigabe nennt ein Notizbuch (`*` = alle) und eine Rechte-Stufe.
+
+| Stufe (`access`) | Rechte |
+|---|---|
+| `read` | Lesen |
+| `inbox` | Nur in den Eingang geben |
+| `read_inbox` | Lesen + Eingang |
+| `curate` | Lesen + Eingang + Kurator |
+| `write` | Lesen + Schreiben + Eingang |
+| `write_curate` | Schreiben + Kurator |
+| `admin` | Alles im Notizbuch, auch dessen Einstellungen |
+
+Server verwalten (Benutzer, Tokens, Webhooks) darf nur `admin` für `*`. Änderungen gehen jederzeit über *Rechte* bzw.
+`PATCH /tokens/{id}` mit `{name?, grants?, create_vault?, expires?}`; der Token-Wert bleibt gleich. Klassisch angelegte Tokens
+laufen unverändert weiter und erscheinen genauso. Lesen, Eingang und Schreiben lassen sich zusätzlich auf einen **Bereich** beschränken:
 
 ```json
 {
@@ -545,7 +563,7 @@ Ein Zugang mit Bereich sieht in Liste, Suche, Abfrage, Namen, Graph, Kampagnen u
 außerhalb sind „nicht gefunden“, Links darauf werden nicht aufgelöst. Schreiben legt neue Notizen im Bereich an (Kampagne
 wird gesetzt, Ordner gewählt) und verweigert Änderungen, die eine Notiz aus dem Bereich schieben. Funktionen, die
 Inhalte außerhalb zeigen oder ändern könnten (Verlauf, Papierkorb, Export, Eingang, Kurator, Anhänge, Ordner, Tags,
-Live-Ereignisse), sind für solche Zugänge gesperrt. Kurator- und Admin-Rechte gibt es nur über klassische Tokens.
+Live-Ereignisse), sind für solche Zugänge gesperrt. Kurator- und Verwaltungsrechte gehen nur ohne Bereich.
 
 ### Vaults
 

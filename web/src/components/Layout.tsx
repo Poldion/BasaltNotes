@@ -12,7 +12,7 @@ import { Icon, NavIcon } from './Icon'
 
 export function Layout() {
   const { vault } = useParams()
-  const { vaults, refreshVaults, theme, setTheme, setMe, isAdmin, isPlayer, me, canWrite, toast, features } = useApp()
+  const { vaults, refreshVaults, theme, setTheme, setMe, isAdmin, isPlayer, me, canWrite, toast, features, isAreaLimited } = useApp()
   const [open, setOpen] = useState(false)
   const [switcher, setSwitcher] = useState(false)
   const [newNote, setNewNote] = useState<{ folder?: string } | null>(null)
@@ -181,7 +181,7 @@ export function Layout() {
             <button className="footer-btn" onClick={() => setTheme(nextTheme)} title={tr('Farbschema: {themeLabel} (klicken zum Wechseln)', { themeLabel: themeLabel })} aria-label={tr('Farbschema wechseln')}>
               <Icon name={theme === 'auto' ? 'auto' : theme === 'dark' ? 'moon' : 'sun'} />
             </button>
-            {vault && canWrite && (
+            {vault && canWrite && !isAreaLimited && (
               <NavLink className="footer-btn" to={`/${vault}/trash`} title={tr('Papierkorb')} aria-label={tr('Papierkorb')}>
                 <Icon name="trash" />
               </NavLink>

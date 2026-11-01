@@ -8,7 +8,7 @@ import { tr } from '../lib/i18n'
 
 export function VaultSettingsPage() {
   const { vault = '' } = useParams()
-  const { toast, isAdmin, canWrite, vaults, refreshVaults, features } = useApp()
+  const { toast, isVaultAdmin: isAdmin, canWrite, vaults, refreshVaults, features } = useApp()
   const navigate = useNavigate()
   const info = vaults.find((v) => v.id === vault)
   const [yaml, setYaml] = useState<string | null>(null)

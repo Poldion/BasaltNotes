@@ -24,8 +24,8 @@ function CalDavCard() {
       <ol className="small" style={{ margin: 0, paddingLeft: 20, display: 'grid', gap: 4 }}>
         <li>
           {isAdmin
-            ? tr('Unter API-Tokens einen „Zugang für eine App“ anlegen: Notizbuch mit Terminen/Listen, lesen + schreiben.')
-            : tr('Von einem Admin einen „Zugang für eine App“ anlegen lassen: Notizbuch mit Terminen/Listen, lesen + schreiben.')}
+            ? tr('Unter API-Tokens einen Token anlegen: Notizbuch mit Terminen/Listen, lesen + schreiben.')
+            : tr('Von einem Admin einen Token anlegen lassen: Notizbuch mit Terminen/Listen, lesen + schreiben.')}
         </li>
         <li>
           {tr('Home Assistant: Einstellungen → Geräte & Dienste → Integration hinzufügen → CalDAV. Adresse wie oben, Benutzername beliebig (z. B. „ha“), Passwort = Token.')}

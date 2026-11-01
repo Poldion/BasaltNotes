@@ -93,6 +93,7 @@ const AREA_READ = new Set([
   'GET /vaults',
   'GET /vaults/:vault',
   'GET /vaults/:vault/types',
+  'GET /vaults/:vault/tree',
   'GET /vaults/:vault/notes',
   'GET /vaults/:vault/notes/by-path',
   'GET /vaults/:vault/notes/by-title',

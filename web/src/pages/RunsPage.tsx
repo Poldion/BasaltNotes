@@ -84,9 +84,8 @@ export function RunsPage() {
 
 function RunDetail({ vault, runId, onBack, onChanged }: { vault: string; runId: string; onBack: () => void; onChanged: () => void }) {
   const [run, setRun] = useState<any | null>(null)
-  const { toast, me } = useApp()
+  const { toast, canCurate } = useApp()
   const { confirm, el } = useConfirm()
-  const canCurate = !!me?.scopes.some((s) => ['curate', 'admin'].includes(s))
   const [progress, setProgress] = useState<any | null>(null)
   const [now, setNow] = useState(Date.now())
   const load = useCallback(() => {

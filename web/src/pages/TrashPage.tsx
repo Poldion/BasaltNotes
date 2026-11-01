@@ -7,7 +7,7 @@ import { tr } from '../lib/i18n'
 
 export function TrashPage() {
   const { vault = '' } = useParams()
-  const { toast, canWrite, isAdmin } = useApp()
+  const { toast, canWrite, isVaultAdmin: isAdmin } = useApp()
   const navigate = useNavigate()
   const { confirm, el } = useConfirm()
   const [items, setItems] = useState<{ path: string; title: string; deleted: string }[] | null>(null)

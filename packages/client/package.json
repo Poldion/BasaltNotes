@@ -1,6 +1,6 @@
 {
   "name": "@basaltnotes/client",
-  "version": "0.23.1",
+  "version": "0.24.0",
   "description": "TypeScript client for the BasaltNotes API (browser and Node ≥ 18)",
   "repository": {
     "type": "git",

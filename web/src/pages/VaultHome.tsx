@@ -17,7 +17,7 @@ interface Campaign {
 
 export function VaultHome() {
   const { vault = '' } = useParams()
-  const { vaults, isPlayer, canWrite, features } = useApp()
+  const { vaults, isPlayer, canWrite, features, isAreaLimited } = useApp()
   const types = useTypes(vault)
   const info = vaults.find((v) => v.id === vault)
   const [recent, setRecent] = useState<NoteSummary[] | null>(null)
@@ -94,12 +94,12 @@ export function VaultHome() {
             </div>
           )}
         </section>
-        {!isPlayer && !features.curator && canWrite && (
+        {!isPlayer && !features.curator && canWrite && !isAreaLimited && (
           <section className="card">
             <DocumentUpload vault={vault} campaigns={campaigns.map((c) => c.title)} onUploaded={load} />
           </section>
         )}
-        {!isPlayer && features.curator && (
+        {!isPlayer && features.curator && !isAreaLimited && (
         <section className="card">
           <div className="card-title">
             {tr('Eingang')}{' '}<Link className="small" to={`/${vault}/inbox`} style={{ marginLeft: 'auto' }}>{tr('alle →')}</Link>

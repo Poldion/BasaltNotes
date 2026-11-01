@@ -1,26 +1,32 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
-import type { FastifyInstance } from 'fastify'
-import { requireScope } from '../auth.js'
+import type { FastifyInstance, FastifyRequest } from 'fastify'
+import { MAX_OWNED_VAULTS, isServerAdmin, requireScope } from '../auth.js'
 import { ApiError, invalid, notFound } from '../lib/errors.js'
 import { PROP_TYPES } from '../notes/presets.js'
 import { safeFileName, writeFileAtomic } from '../lib/util.js'
 import type { Vault } from '../notes/vault.js'
 import { createExampleVault } from '../notes/example.js'
 import { requestLang } from '../i18n.js'
-import { Register, Services, T, noteJson, vaultFor, visibilityOf } from './common.js'
+import { hasArea, restrictSql } from '../notes/search.js'
+import { Register, Services, T, accessOf, noteJson, vaultFor } from './common.js'
 
-function vaultSummary(s: Services, v: Vault) {
+function vaultSummary(s: Services, v: Vault, req: FastifyRequest) {
+  // Zugänge mit Bereich oder Spieler-Sicht: nur zählen, was sie sehen dürfen
+  const access = accessOf(req, v.id)
+  const limited = hasArea(access) || access.visibility === 'players'
+  const params: any[] = [v.id]
+  const where = restrictSql(access, params)
   return {
     id: v.id,
     name: v.config.name,
     preset: v.config.preset,
-    note_count: v.count(),
+    note_count: limited ? (s.db.get<{ n: number }>(`SELECT COUNT(*) n FROM notes n WHERE n.vault = ? ${where}`, ...params)?.n ?? 0) : v.count(),
     types: Object.keys(v.config.types),
     curator: { enabled: v.config.curator.enabled, profile: v.config.curator.profile, mode: v.config.curator.mode ?? 'full' },
-    open_proposals: s.db.get<{ n: number }>("SELECT COUNT(*) n FROM proposals WHERE vault = ? AND status = 'open'", v.id)?.n ?? 0,
-    inbox_pending: s.db.get<{ n: number }>("SELECT COUNT(*) n FROM inbox WHERE vault = ? AND status IN ('queued','running')", v.id)?.n ?? 0,
+    open_proposals: limited ? 0 : (s.db.get<{ n: number }>("SELECT COUNT(*) n FROM proposals WHERE vault = ? AND status = 'open'", v.id)?.n ?? 0),
+    inbox_pending: limited ? 0 : (s.db.get<{ n: number }>("SELECT COUNT(*) n FROM inbox WHERE vault = ? AND status IN ('queued','running')", v.id)?.n ?? 0),
   }
 }
 
@@ -28,7 +34,7 @@ export const registerVaults: Register = (app: FastifyInstance, s: Services) => {
   app.get('/vaults', { schema: { tags: T.vaults, summary: 'Vaults auflisten' } }, async (req) => {
     const p = req.principal!
     const items = s.vaults.list().filter((v) => p.vaults === '*' || p.vaults.includes(v.id))
-    return { items: items.map((v) => vaultSummary(s, v)) }
+    return { items: items.map((v) => vaultSummary(s, v, req)) }
   })
 
   app.post(
@@ -36,16 +42,19 @@ export const registerVaults: Register = (app: FastifyInstance, s: Services) => {
     {
       schema: {
         tags: T.vaults,
-        summary: 'Vault anlegen {name, preset: dnd|notes|empty, lang?: de|en} – empty = frei (nur „Notiz“, Kurator verknüpft nur); lang = Sprache der Ordnernamen (Standard: Sprache der Anfrage)',
+        summary: 'Vault anlegen {name, preset: dnd|notes|empty, lang?: de|en} – empty = frei (nur „Notiz“, Kurator verknüpft nur); lang = Sprache der Ordnernamen (Standard: Sprache der Anfrage). Recht: admin oder create_vault – der anlegende Token hat im neuen Vault alle Rechte',
         body: { type: 'object', properties: { name: { type: 'string' }, preset: { type: 'string', enum: ['dnd', 'notes', 'empty'] }, lang: { type: 'string', enum: ['de', 'en'] } }, required: ['name'] },
       },
     },
     async (req, reply) => {
-      requireScope(req, 'admin')
+      requireScope(req, 'create_vault')
       const b = req.body as any
+      const p = req.principal!
+      if (!isServerAdmin(p) && (p.ownedVaults?.length ?? 0) >= MAX_OWNED_VAULTS) throw new ApiError('forbidden', `Dieser Zugang hat bereits ${MAX_OWNED_VAULTS} eigene Vaults.`)
       const v = await s.vaults.create(b.name, b.preset ?? 'empty', b.lang ?? requestLang(req))
+      if (p.tokenId) s.auth.addOwnedVault(p.tokenId, v.id)
       reply.code(201)
-      return vaultSummary(s, v)
+      return vaultSummary(s, v, req)
     },
   )
 
@@ -53,12 +62,12 @@ export const registerVaults: Register = (app: FastifyInstance, s: Services) => {
     requireScope(req, 'admin')
     const v = await createExampleVault(s.vaults)
     reply.code(201)
-    return vaultSummary(s, v)
+    return vaultSummary(s, v, req)
   })
 
   app.get('/vaults/:vault', { schema: { tags: T.vaults, summary: 'Vault-Details' } }, async (req) => {
     const v = vaultFor(req, s, 'read')
-    return { ...vaultSummary(s, v), config: { name: v.config.name, curator: v.config.curator } }
+    return { ...vaultSummary(s, v, req), config: { name: v.config.name, curator: v.config.curator } }
   })
 
   app.patch('/vaults/:vault', { schema: { tags: T.vaults, summary: 'Vault umbenennen / Einstellungen ändern {name?, curator?}' } }, async (req) => {
@@ -69,12 +78,13 @@ export const registerVaults: Register = (app: FastifyInstance, s: Services) => {
       if (b.curator.mode !== undefined && !['full', 'link'].includes(b.curator.mode)) throw invalid('curator.mode muss full oder link sein.')
       v.updateConfig({ curator: { ...v.config.curator, ...b.curator } })
     }
-    return vaultSummary(s, v)
+    return vaultSummary(s, v, req)
   })
 
   app.delete('/vaults/:vault', { schema: { tags: T.vaults, summary: 'Vault löschen (wird nach data/deleted-vaults verschoben)' } }, async (req) => {
     const v = vaultFor(req, s, 'admin')
     await s.vaults.delete(v.id)
+    s.auth.forgetOwnedVault(v.id)
     return { deleted: v.id }
   })
 
@@ -194,9 +204,11 @@ export const registerVaults: Register = (app: FastifyInstance, s: Services) => {
 
   app.get('/vaults/:vault/tree', { schema: { tags: T.vaults, summary: 'Ordner und Notizen für den Dateibaum' } }, async (req) => {
     const v = vaultFor(req, s, 'read')
-    const vis = visibilityOf(req)
-    const notes = s.db.all<any>(`SELECT id, path, title, type, visibility FROM notes WHERE vault = ? ${vis === 'players' ? "AND visibility = 'players'" : ''} ORDER BY path COLLATE NOCASE`, v.id)
-    return { folders: vis === 'players' ? [] : v.listFolders(), notes }
+    const access = accessOf(req, v.id)
+    const params: any[] = [v.id]
+    const where = restrictSql(access, params)
+    const notes = s.db.all<any>(`SELECT n.id, n.path, n.title, n.type, n.visibility FROM notes n WHERE n.vault = ? ${where} ORDER BY n.path COLLATE NOCASE`, ...params)
+    return { folders: access.visibility === 'players' || hasArea(access) ? [] : v.listFolders(), notes }
   })
 
   app.post('/vaults/:vault/folders', { schema: { tags: T.vaults, summary: 'Ordner anlegen {path}' } }, async (req, reply) => {
