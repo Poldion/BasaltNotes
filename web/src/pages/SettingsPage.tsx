@@ -5,6 +5,7 @@ import { useApp } from '../lib/state'
 import { registry, type PluginInfo } from '../lib/plugins'
 import { Modal, Spinner, fmtDateTime, relTime, useConfirm } from '../lib/ui'
 import { tr } from '../lib/i18n'
+import { nativeApp } from '../lib/native'
 import { Icon } from '../components/Icon'
 
 export function SettingsPage() {
@@ -20,6 +21,7 @@ export function SettingsPage() {
         <h1>{tr('Einstellungen')}</h1>
       </div>
       <div className="stack">
+        {nativeApp && <AppCard />}
         <HealthCard key={rev} />
         {isAdmin && <FeaturesCard />}
         {isAdmin && (features.curator || features.chat) && <LlmCard onSaved={() => setRev((r) => r + 1)} />}
@@ -37,6 +39,28 @@ export function SettingsPage() {
         <ApiCard />
       </div>
     </div>
+  )
+}
+
+/** Nur in der Android-App: verbundener Server */
+function AppCard() {
+  return (
+    <section className="card">
+      <div className="card-title">{tr('Android-App')}</div>
+      <div className="row">
+        <span className="grow small muted">
+          {nativeApp!.server()} · {tr('App-Version {version}', { version: nativeApp!.version() })}
+        </span>
+        {nativeApp!.checkUpdates && (
+          <button className="btn" onClick={() => nativeApp!.checkUpdates!()}>
+            {tr('Nach Updates suchen')}
+          </button>
+        )}
+        <button className="btn" onClick={() => nativeApp!.changeServer()}>
+          {tr('Server wechseln')}
+        </button>
+      </div>
+    </section>
   )
 }
 

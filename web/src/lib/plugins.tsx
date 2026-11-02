@@ -8,6 +8,7 @@ import { Modal, Spinner, TypeDot, fmtDate, fmtDateTime, relTime, slugify } from 
 import { embedNavigate } from '../pages/NotePage'
 import { addTranslations, lang, locale, tr, type Lang } from './i18n'
 import { Icon } from '../components/Icon'
+import { platform } from './native'
 
 /*
  * Plugin-Host der Oberfläche: lädt die Oberflächen-Module eingeschalteter Plugins (ESM) und sammelt,
@@ -72,14 +73,14 @@ export const registry = {
 }
 
 /** Pfade, die der Kern selbst benutzt – Plugins dürfen sie nicht belegen */
-const RESERVED = new Set(['note', 'search', 'chat', 'inbox', 'proposals', 'runs', 'graph', 'trash', 'settings', 'p'])
+const RESERVED = new Set(['note', 'search', 'chat', 'inbox', 'proposals', 'runs', 'graph', 'trash', 'settings', 'p', 'share'])
 
 function expose() {
   ;(globalThis as any).basalt = {
     React,
     jsxRuntime,
     ReactRouterDom,
-    sdk: { api, enc, qs, useApp, useTypes, useVaultEvents, Modal, Spinner, TypeDot, relTime, fmtDate, fmtDateTime, tr, lang, locale, Icon, embedNavigate, slugify },
+    sdk: { api, enc, qs, useApp, useTypes, useVaultEvents, Modal, Spinner, TypeDot, relTime, fmtDate, fmtDateTime, tr, lang, locale, Icon, embedNavigate, slugify, platform },
   }
 }
 

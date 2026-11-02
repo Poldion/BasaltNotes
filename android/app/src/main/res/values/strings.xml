@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">BasaltNotes</string>
+    <string name="connect_intro">Enter the address of your BasaltNotes server. You sign in on the next screen.</string>
+    <string name="connect_address">Server address</string>
+    <string name="connect_hint">notes.example.com</string>
+    <string name="connect_button">Connect</string>
+    <string name="connect_checking">Checking server …</string>
+    <string name="connect_failed">No BasaltNotes server found at this address: %1$s</string>
+    <string name="connect_invalid">Please enter a valid address.</string>
+    <string name="error_title">Server not reachable</string>
+    <string name="error_ssl">The server\'s certificate is not trusted. Install your certificate authority on this device or use a trusted certificate.</string>
+    <string name="error_retry">Try again</string>
+    <string name="error_change_server">Change server</string>
+    <string name="download_started">Download started: %1$s</string>
+    <string name="download_saved">Saved to Downloads: %1$s</string>
+    <string name="download_failed">Could not save the file.</string>
+    <string name="no_app">No app can open this.</string>
+    <string name="update_title">Version %1$s is available</string>
+    <string name="update_message">Download and install the update now? Your notes stay on your server.</string>
+    <string name="update_install">Install</string>
+    <string name="update_later">Later</string>
+    <string name="update_downloading">Downloading update …</string>
+    <string name="update_none">The app is up to date.</string>
+    <string name="update_failed">Could not load the update.</string>
+</resources>

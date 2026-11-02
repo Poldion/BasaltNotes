@@ -33,7 +33,8 @@ export function LoginPage() {
       const me = await api<Me>('/auth/me')
       setMe(me)
       await refreshVaults()
-      const from = (location.state as any)?.from
+      // Direkt aufgerufene Seite (z. B. Teilen aus einer anderen App) nach der Anmeldung wieder öffnen
+      const from = (location.state as any)?.from ?? `${location.pathname}${location.search}`
       navigate(from && from !== '/login' ? from : '/', { replace: true })
     } catch (err) {
       setError((err as Error).message)

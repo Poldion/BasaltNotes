@@ -1,12 +1,12 @@
 import { useEffect, useRef } from 'react'
 import { EditorSelection, EditorState, RangeSetBuilder, type Extension } from '@codemirror/state'
 import { Decoration, EditorView, ViewPlugin, WidgetType, keymap, placeholder as cmPlaceholder, type DecorationSet, type ViewUpdate } from '@codemirror/view'
-import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
+import { defaultKeymap, history, historyKeymap, indentWithTab, redo, undo } from '@codemirror/commands'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { languages } from '@codemirror/language-data'
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { autocompletion, closeBrackets, completionKeymap, type CompletionContext, type CompletionResult } from '@codemirror/autocomplete'
-import { highlightSelectionMatches, search, searchKeymap } from '@codemirror/search'
+import { highlightSelectionMatches, openSearchPanel, search, searchKeymap } from '@codemirror/search'
 import { tags as t } from '@lezer/highlight'
 import { api, enc } from '../lib/api'
 import { lang, tr } from '../lib/i18n'
@@ -211,6 +211,8 @@ export function Editor({ vault, value, onChange, onSave, onOpenLink, raw, readOn
   const cb = useRef({ onChange, onSave, onOpenLink })
   cb.current = { onChange, onSave, onOpenLink }
   const known = useRef<Set<string> | null>(null)
+  const fileInput = useRef<HTMLInputElement>(null)
+  const uploadRef = useRef<((files: File[], pos: number, v: EditorView) => Promise<void>) | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -241,6 +243,7 @@ export function Editor({ vault, value, onChange, onSave, onOpenLink, raw, readOn
         }
       }
     }
+    uploadRef.current = upload
     const extensions: Extension[] = [
       history(),
       search({ top: true }),
@@ -317,5 +320,72 @@ export function Editor({ vault, value, onChange, onSave, onOpenLink, raw, readOn
     if (cur !== value) v.dispatch({ changes: { from: 0, to: cur.length, insert: value } })
   }, [value])
 
-  return <div ref={host} className={`editor-wrap ${raw ? 'raw' : ''}`} />
+  /** Am Zeilenanfang einfügen (Überschrift, Liste, Aufgabe) */
+  const linePrefix = (prefix: string) => {
+    const v = view.current
+    if (!v) return
+    v.dispatch(v.state.changeByRange((r) => {
+      const line = v.state.doc.lineAt(r.from)
+      return { changes: { from: line.from, insert: prefix }, range: EditorSelection.range(r.from + prefix.length, r.to + prefix.length) }
+    }))
+  }
+  /** Touch: Strg+Klick gibt es nicht – Wiki-Link unter dem Cursor öffnen */
+  const openLinkAtCursor = () => {
+    const v = view.current
+    if (!v) return
+    const head = v.state.selection.main.head
+    const line = v.state.doc.lineAt(head)
+    for (const m of line.text.matchAll(LINK_RE)) {
+      const from = line.from + m.index
+      if (head >= from && head <= from + m[0].length) return cb.current.onOpenLink?.(m[2])
+    }
+  }
+  const tool = (label: string, title: string, run: (v: EditorView) => unknown) => (
+    <button
+      key={title}
+      type="button"
+      title={title}
+      aria-label={title}
+      // Fokus (und damit die Tastatur) bleibt im Editor
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={() => {
+        if (!view.current) return
+        run(view.current)
+        view.current.focus()
+      }}
+    >
+      {label}
+    </button>
+  )
+
+  return (
+    <div className={`editor-wrap ${raw ? 'raw' : ''}`}>
+      <div ref={host} />
+      {!readOnly && (
+        <div className="editor-toolbar" role="toolbar" aria-label={tr('Formatieren')}>
+          {tool('B', tr('Fett'), (v) => wrap(v, '**'))}
+          {tool('I', tr('Kursiv'), (v) => wrap(v, '*'))}
+          {tool('[[ ]]', tr('Wiki-Link'), (v) => wrap(v, '[[', ']]'))}
+          {tool('↗', tr('Link öffnen'), openLinkAtCursor)}
+          {tool('#', tr('Überschrift'), () => linePrefix('# '))}
+          {tool('•', tr('Liste'), () => linePrefix('- '))}
+          {tool('☐', tr('Aufgabe'), () => linePrefix('- [ ] '))}
+          {tool('📎', tr('Datei anhängen'), () => fileInput.current?.click())}
+          {tool('🔍', tr('Im Text suchen'), openSearchPanel)}
+          {tool('↶', tr('Rückgängig'), undo)}
+          {tool('↷', tr('Wiederholen'), redo)}
+          <input
+            ref={fileInput}
+            type="file"
+            multiple
+            hidden
+            onChange={(e) => {
+              if (view.current && e.target.files) void uploadRef.current?.(Array.from(e.target.files), view.current.state.selection.main.head, view.current)
+              e.target.value = ''
+            }}
+          />
+        </div>
+      )}
+    </div>
+  )
 }

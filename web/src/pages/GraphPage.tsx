@@ -185,7 +185,28 @@ export function GraphPage({ embedded }: { embedded?: boolean } = {}) {
       return best
     }
     let drag: { node: GNode | null; sx: number; sy: number; ox: number; oy: number; moved: boolean } | null = null
+    // Zwei Finger: Zoomen wie mit dem Mausrad
+    const fingers = new Map<number, { x: number; y: number }>()
+    let pinch: { dist: number; k: number } | null = null
+    const fingerDist = () => {
+      const [a, b] = [...fingers.values()]
+      return Math.hypot(a.x - b.x, a.y - b.y)
+    }
     const down = (ev: PointerEvent) => {
+      if (ev.pointerType === 'touch') {
+        fingers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY })
+        if (fingers.size === 2) {
+          if (drag?.node) {
+            drag.node.fx = null
+            drag.node.fy = null
+            sim.alphaTarget(0)
+          }
+          drag = null
+          autoFit = false
+          pinch = { dist: fingerDist(), k: transform.k }
+          return
+        }
+      }
       const n = pick(ev)
       if (!n) autoFit = false
       drag = { node: n, sx: ev.clientX, sy: ev.clientY, ox: transform.x, oy: transform.y, moved: false }
@@ -193,6 +214,13 @@ export function GraphPage({ embedded }: { embedded?: boolean } = {}) {
       if (n) sim.alphaTarget(0.3).restart()
     }
     const move = (ev: PointerEvent) => {
+      if (fingers.has(ev.pointerId)) fingers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY })
+      if (pinch && fingers.size === 2) {
+        transform = { ...transform, k: Math.min(4, Math.max(0.2, (pinch.k * fingerDist()) / pinch.dist)) }
+        draw()
+        return
+      }
+      if (ev.pointerType === 'touch' && !drag) return
       if (drag) {
         if (Math.abs(ev.clientX - drag.sx) + Math.abs(ev.clientY - drag.sy) > 3) drag.moved = true
         if (drag.node) {
@@ -212,7 +240,9 @@ export function GraphPage({ embedded }: { embedded?: boolean } = {}) {
         draw()
       }
     }
-    const up = () => {
+    const up = (ev: PointerEvent) => {
+      fingers.delete(ev.pointerId)
+      if (fingers.size < 2) pinch = null
       if (drag?.node) {
         const n = drag.node
         n.fx = null
@@ -234,7 +264,9 @@ export function GraphPage({ embedded }: { embedded?: boolean } = {}) {
     c.addEventListener('pointerdown', down)
     c.addEventListener('pointermove', move)
     c.addEventListener('pointerup', up)
+    c.addEventListener('pointercancel', up)
     c.addEventListener('wheel', wheel, { passive: false })
+    c.style.touchAction = 'none'
     const ro = new ResizeObserver(resize)
     ro.observe(wrap.current)
     resize()
@@ -245,6 +277,7 @@ export function GraphPage({ embedded }: { embedded?: boolean } = {}) {
       c.removeEventListener('pointerdown', down)
       c.removeEventListener('pointermove', move)
       c.removeEventListener('pointerup', up)
+      c.removeEventListener('pointercancel', up)
       c.removeEventListener('wheel', wheel)
     }
   }, [data, hidden, navigate, vault, embedded])

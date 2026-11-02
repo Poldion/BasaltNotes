@@ -37,7 +37,7 @@ und Quests an, ergänzt bestehende und lernt Schreibvarianten („Cydia“ → Z
 | **Plugins** | Erweiterungen mit Server- und Oberflächen-Teil; installieren und aktualisieren aus dem Katalog oder eigenen GitHub-Repos; Kalender & CalDAV (auch für Home Assistant) ist mitgeliefert |
 | **Benutzer** | Admin oder Mitglied mit Rechte-Stufe je Vault, API-Tokens mit Freigaben je Vault |
 | **Einbindung** | REST-API mit OpenAPI, Server-Sent Events, signierte Webhooks, iframe-Einbettungen, JS-SDK |
-| **Oberfläche** | Deutsch und Englisch, Hell/Dunkel, bis Handybreite, als PWA installierbar |
+| **Oberfläche** | Deutsch und Englisch, Hell/Dunkel, bis Handybreite, als PWA installierbar, [Android-App](android/README.md) |
 
 Der KI-Kurator und der Chat sind bei einer neuen Einrichtung **aus**. Ohne Sprachmodell ist BasaltNotes eine vollständige
 Notiz-App.

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="connect_intro">Gib die Adresse deines BasaltNotes-Servers ein. Die Anmeldung folgt im nächsten Schritt.</string>
+    <string name="connect_address">Server-Adresse</string>
+    <string name="connect_hint">notizen.example.com</string>
+    <string name="connect_button">Verbinden</string>
+    <string name="connect_checking">Server wird geprüft …</string>
+    <string name="connect_failed">Unter dieser Adresse wurde kein BasaltNotes-Server gefunden: %1$s</string>
+    <string name="connect_invalid">Bitte gib eine gültige Adresse ein.</string>
+    <string name="error_title">Server nicht erreichbar</string>
+    <string name="error_ssl">Dem Zertifikat des Servers wird nicht vertraut. Installiere deine Zertifizierungsstelle auf dem Gerät oder verwende ein vertrauenswürdiges Zertifikat.</string>
+    <string name="error_retry">Erneut versuchen</string>
+    <string name="error_change_server">Server wechseln</string>
+    <string name="download_started">Download gestartet: %1$s</string>
+    <string name="download_saved">In „Downloads“ gespeichert: %1$s</string>
+    <string name="download_failed">Die Datei konnte nicht gespeichert werden.</string>
+    <string name="no_app">Keine App kann das öffnen.</string>
+    <string name="update_title">Version %1$s ist verfügbar</string>
+    <string name="update_message">Update jetzt laden und installieren? Deine Notizen bleiben auf deinem Server.</string>
+    <string name="update_install">Installieren</string>
+    <string name="update_later">Später</string>
+    <string name="update_downloading">Update wird geladen …</string>
+    <string name="update_none">Die App ist aktuell.</string>
+    <string name="update_failed">Das Update konnte nicht geladen werden.</string>
+</resources>

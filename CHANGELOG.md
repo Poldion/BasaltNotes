@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.27.0] – 2026-11-02
+
+### Added
+
+- Android app (`android/`): shows the interface of your own server including all plugins, with sharing from other
+  apps, file picker, downloads, back button and updates from GitHub releases.
+- Share page (`/p/share`), also as a share target of the installed PWA.
+- Touch: editor toolbar above the keyboard, ⋮ actions and moving notes in the file tree, pinch zoom in the graph.
+- Plugin SDK: `platform` (`web` or `android`).
+
+### Fixed
+
+- A page opened directly while signed out opens again after signing in.
+
 ## [0.26.0] – 2026-11-01
 
 ### Added

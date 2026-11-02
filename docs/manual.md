@@ -309,6 +309,20 @@ Plugins run with the app's privileges (server) or those of the signed-in person 
 
 ---
 
+## Android app
+
+The app in [`android/`](../android) shows the interface of your server, so it has the same features and all enabled plugins.
+On first start, enter the server address (http on your home network and your own certificate authorities installed on
+the device work too), then sign in as usual. To switch: Settings → Android app.
+
+- **Sharing:** share text, links and files from other apps to BasaltNotes. With the curator they go to the inbox; without it, text becomes a note right away.
+- **Touch:** a bar above the keyboard (formatting, open wiki link, attach file, find, undo), ⋮ in the file tree for rename, move and delete, pinch to zoom in the graph.
+- **Updates:** once a day the app asks the GitHub releases for a new version and offers to install it (also by hand: Settings → Android app). This is the only connection besides your server. Get the first install as an APK from the [releases](https://github.com/Poldion/BasaltNotes/releases).
+- **Offline reading** needs https; this is an Android restriction.
+- The app needs a server of at least its own version. Older servers work without sharing and without downloads from the app.
+
+Building: see [`android/README.md`](../android/README.md).
+
 ## Integration
 
 ### WhisperNotes → inbox

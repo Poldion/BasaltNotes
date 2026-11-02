@@ -37,7 +37,7 @@ Every change is a git commit and can be undone.
 | **Plugins** | Extensions with a server and a UI part; install and update from the catalog or your own GitHub repos; Calendar & CalDAV (also for Home Assistant) ships built in |
 | **Users** | Admin or member with an access level per vault, API tokens with per-vault permissions |
 | **Integration** | REST API with OpenAPI, server-sent events, signed webhooks, iframe embeds, JS SDK |
-| **Interface** | English and German, light/dark, works down to phone width, installable as a PWA |
+| **Interface** | English and German, light/dark, works down to phone width, installable as a PWA, [Android app](android/README.md) |
 
 The AI curator and the chat are **off** on a fresh install. Without a language model BasaltNotes is a complete note app.
 

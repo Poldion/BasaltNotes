@@ -303,6 +303,20 @@ installieren, denen man vertraut.
 
 ---
 
+## Android-App
+
+Die App in [`android/`](../android) zeigt die Oberfläche deines Servers, hat also denselben Funktionsumfang und alle eingeschalteten
+Plugins. Beim ersten Start gibst du die Server-Adresse ein (http im Heimnetz und eigene, auf dem Gerät installierte
+Zertifizierungsstellen gehen auch), danach meldest du dich wie gewohnt an. Wechseln: Einstellungen → Android-App.
+
+- **Teilen:** Texte, Links und Dateien aus anderen Apps an BasaltNotes teilen. Mit Kurator landen sie im Eingang, ohne Kurator wird aus Text direkt eine Notiz.
+- **Touch:** Leiste über der Tastatur (Formatieren, Wiki-Link öffnen, Datei anhängen, Suchen, Rückgängig), ⋮ im Dateibaum für Umbenennen, Verschieben und Löschen, im Graph mit zwei Fingern zoomen.
+- **Updates:** Einmal am Tag fragt die App bei den GitHub-Releases nach einer neuen Version und bietet sie zur Installation an (auch von Hand: Einstellungen → Android-App). Das ist die einzige Verbindung außer zu deinem Server. Die erste Installation kommt als APK vom [Release](https://github.com/Poldion/BasaltNotes/releases).
+- **Offline-Lesen** geht nur über https, das ist eine Vorgabe von Android.
+- Die App braucht einen Server ab der Version, die sie mitbringt. Ältere Server laufen ohne Teilen und ohne Downloads aus der App.
+
+Bauen: siehe [`android/README.md`](../android/README.md).
+
 ## Integration
 
 ### WhisperNotes → Eingang

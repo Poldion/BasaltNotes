@@ -19,6 +19,7 @@ import { TrashPage } from './pages/TrashPage'
 import { VaultSettingsPage } from './pages/VaultSettingsPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { EmbedRoutes } from './pages/Embed'
+import { SharePage } from './pages/SharePage'
 import { loadPlugins, registry } from './lib/plugins'
 
 export function App() {
@@ -105,6 +106,7 @@ export function App() {
           <Route index element={<SettingsPage />} />
         </Route>
         <Route path="/p" element={<Layout />}>
+          <Route path="share" element={<SharePage />} />
           {registry.pages
             .filter((pg) => pg.scope === 'global')
             .map((pg) => (

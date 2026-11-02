@@ -657,6 +657,66 @@ table.table {
 .tree-row:focus-within .actions {
   display: flex;
 }
+.tree-more {
+  display: none;
+}
+/* Touch: kein Hover – Aktionen hinter ⋮, größere Tippflächen, Editor-Leiste */
+@media (hover: none), (pointer: coarse) {
+  .tree-more {
+    display: inline-flex;
+  }
+  .tree-row:hover .actions,
+  .tree-row:focus-within .actions {
+    display: none;
+  }
+  .tree-row .actions.open {
+    display: flex;
+    flex: none;
+  }
+  .tree-row {
+    min-height: 40px;
+  }
+  .nav-link {
+    min-height: 40px;
+  }
+  .icon-btn,
+  .footer-btn {
+    min-width: 36px;
+    min-height: 36px;
+  }
+  .sidebar kbd {
+    display: none;
+  }
+}
+.editor-toolbar {
+  display: none;
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  gap: 2px;
+  overflow-x: auto;
+  padding: 4px;
+  background: var(--bg-2);
+  border-top: 1px solid var(--border);
+}
+.editor-toolbar button {
+  flex: none;
+  min-width: 40px;
+  min-height: 40px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font-size: 15px;
+}
+.editor-toolbar button:active {
+  background: var(--accent-soft);
+}
+@media (hover: none), (pointer: coarse) {
+  .editor-toolbar {
+    display: flex;
+  }
+}
 .tree-caret {
   display: inline-flex;
   align-items: center;

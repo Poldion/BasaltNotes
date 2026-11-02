@@ -68,6 +68,11 @@ export function tr(text: string, vars?: Record<string, unknown>): string
 export const lang: 'de' | 'en'
 /** Gebietsschema für Intl (z. B. 'de-DE', 'en-GB') */
 export const locale: string
+/**
+ * Wo die Oberfläche läuft: im Browser oder in der Android-App. Plugins laufen dort unverändert – Downloads über
+ * `<a download>`, Dateiauswahl über `<input type="file">` und `navigator.clipboard` funktionieren in der App ebenfalls.
+ */
+export const platform: 'web' | 'android'
 
 /**
  * Strich-Symbol der App (passt zu Seitenleiste und Menüs). Namen u. a.: search, home, calendar, chat, inbox, sparkle,

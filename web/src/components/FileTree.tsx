@@ -61,6 +61,7 @@ export function FileTree({ vault, onNewNote }: { vault: string; onNewNote: (fold
     }
   })
   const [dropTarget, setDropTarget] = useState<string | null>(null)
+  const [actionsFor, setActionsFor] = useState<string | null>(null)
   const { ask, el: promptEl } = usePrompt()
   const { confirm, el: confirmEl } = useConfirm()
 
@@ -148,6 +149,28 @@ export function FileTree({ vault, onNewNote }: { vault: string; onNewNote: (fold
   const moveNote = async (id: string, folder: string) => {
     await run(() => api(`/vaults/${enc(vault)}/notes/${enc(id)}/rename`, { body: { folder } }), tr('Verschoben'))
   }
+  /** Verschieben ohne Ziehen (Touch) */
+  const askMoveNote = async (n: TreeNote) => {
+    const current = n.path.split('/').slice(0, -1).join('/')
+    const to = await ask(tr('Verschieben'), tr('Zielordner (/ = oberste Ebene)'), current || '/')
+    if (!to) return
+    const folder = to.replace(/^\/+|\/+$/g, '')
+    if (folder !== current) await moveNote(n.id, folder)
+  }
+  /** Touch: Aktionen einer Zeile erscheinen erst nach Tipp auf ⋮ (kein Hover) */
+  const moreButton = (key: string) => (
+    <button
+      className="icon-btn tree-more"
+      aria-label={tr('Aktionen')}
+      onClick={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        setActionsFor((cur) => (cur === key ? null : key))
+      }}
+    >
+      ⋮
+    </button>
+  )
 
   const dropProps = (folder: string) =>
     canWrite
@@ -187,8 +210,9 @@ export function FileTree({ vault, onNewNote }: { vault: string; onNewNote: (fold
               >
                 <span className="tree-caret">{<Icon name={isOpen ? 'chevronDown' : 'chevronRight'} size={12} />}</span>
                 <span className="label">{sub.name}</span>
+                {canWrite && moreButton(sub.path)}
                 {canWrite && (
-                  <span className="actions" onClick={(e) => e.stopPropagation()}>
+                  <span className={`actions ${actionsFor === sub.path ? 'open' : ''}`} onClick={(e) => e.stopPropagation()}>
                     <button className="icon-btn" title={tr('Neue Notiz hier')} onClick={() => onNewNote(sub.path)}>
                       <Icon name="plus" />
                     </button>
@@ -221,10 +245,14 @@ export function FileTree({ vault, onNewNote }: { vault: string; onNewNote: (fold
           >
             <TypeDot type={n.type} />
             <span className="label">{n.title}</span>
+            {canWrite && moreButton(n.id)}
             {canWrite && (
-              <span className="actions" onClick={(e) => e.preventDefault()}>
+              <span className={`actions ${actionsFor === n.id ? 'open' : ''}`} onClick={(e) => e.preventDefault()}>
                 <button className="icon-btn" title={tr('Umbenennen')} onClick={() => renameNote(n)}>
                   <Icon name="edit" />
+                </button>
+                <button className="icon-btn" title={tr('Verschieben')} onClick={() => askMoveNote(n)}>
+                  <Icon name="folderPlus" />
                 </button>
                 <button className="icon-btn" title={tr('Löschen')} onClick={() => deleteNote(n)}>
                   <Icon name="trash" />
