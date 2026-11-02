@@ -3,17 +3,23 @@ import { ApiError, CancelledError, isCancelled } from '../lib/errors.js'
 import { Mutex, sleep } from '../lib/util.js'
 
 /** Nachdenken („Thinking“) bei Modellen, die es können (qwen3, deepseek-r1, gpt-oss …) */
-export type ThinkMode = 'off' | 'on' | 'low' | 'medium' | 'high'
-export const THINK_MODES: ThinkMode[] = ['off', 'on', 'low', 'medium', 'high']
+export type ThinkMode = 'off' | 'on' | 'low' | 'medium' | 'high' | 'unlimited'
+export const THINK_MODES: ThinkMode[] = ['off', 'on', 'low', 'medium', 'high', 'unlimited']
 
 /** Zusätzliche Antwort-Tokens, damit das Nachdenken die eigentliche Antwort nicht abschneidet */
 export function thinkReserve(mode: ThinkMode | undefined): number {
-  return mode === 'low' ? 1024 : mode === 'on' || mode === 'medium' ? 2048 : mode === 'high' ? 4096 : 0
+  return mode === 'low' ? 1024 : mode === 'on' || mode === 'medium' ? 2048 : mode === 'high' ? 4096 : mode === 'unlimited' ? 8192 : 0
 }
 
 /** Wert für Ollamas "think": false, true oder eine Stufe (gpt-oss) */
 function thinkValue(mode: ThinkMode | undefined): boolean | string {
-  return !mode || mode === 'off' ? false : mode === 'on' ? true : mode
+  return !mode || mode === 'off' ? false : mode === 'on' || mode === 'unlimited' ? true : mode
+}
+
+/** Antwortgrenze für Ollama; -1 = keine. Ohne Nachdenken gilt nur die Reserve der Antwort. */
+function predictLimit(reserve: number, mode: ThinkMode | undefined, think: boolean | string | undefined): number {
+  if (!think) return reserve
+  return mode === 'unlimited' ? -1 : reserve + thinkReserve(mode)
 }
 
 /** Wenn der Server/das Modell den Wert ablehnt: Stufe → an → aus → gar nicht senden (ältere Ollama-Versionen) */
@@ -75,6 +81,8 @@ export interface ChatJsonOptions {
   signal?: AbortSignal
   /** Fortschritt: Anzahl bisher erzeugter Tokens */
   onToken?: (tokens: number) => void
+  /** Hinweis für das Protokoll, z. B. wenn ohne Nachdenken wiederholt wurde */
+  onWarning?: (text: string) => void
 }
 
 export interface ChatTextOptions {
@@ -251,7 +259,7 @@ export class OllamaClient implements LlmClient {
           model,
           stream: true,
           messages: [{ role: 'system', content: opts.system }, ...opts.messages],
-          options: { temperature: opts.temperature ?? 0.2, num_ctx: context, num_predict: (opts.reserveTokens ?? 700) + thinkReserve(this.cfg.think_chat) },
+          options: { temperature: opts.temperature ?? 0.2, num_ctx: context, num_predict: predictLimit(opts.reserveTokens ?? 700, this.cfg.think_chat, think) },
           keep_alive: '30m',
         }
         if (think !== undefined) body.think = think
@@ -278,6 +286,11 @@ export class OllamaClient implements LlmClient {
             think = nextThink(think)
             continue
           }
+          // Das Nachdenken hat Zeit oder Tokens aufgebraucht: lieber eine Antwort ohne als gar keine
+          if (think && (err.reason === 'thinking' || (err.reason === 'truncated' && err.thought))) {
+            think = false
+            continue
+          }
           this.cache = null
           throw new ApiError('llm_unavailable', err.message, { reason: err.reason === 'first' || err.reason === 'idle' ? 'timeout' : 'unreachable' })
         }
@@ -299,7 +312,7 @@ export class OllamaClient implements LlmClient {
           { role: 'user', content: opts.user },
         ],
         format: opts.schema ?? 'json',
-        options: { temperature: opts.temperature ?? 0.15, num_ctx: context, num_predict: (opts.reserveTokens ?? 1536) + thinkReserve(this.cfg.think_curator) },
+        options: { temperature: opts.temperature ?? 0.15, num_ctx: context, num_predict: predictLimit(opts.reserveTokens ?? 1536, this.cfg.think_curator, think) },
         keep_alive: '30m',
       }
       if (think !== undefined) body.think = think
@@ -312,6 +325,13 @@ export class OllamaClient implements LlmClient {
         // Modell kann kein Nachdenken bzw. ältere Ollama-Version kennt "think" nicht
         if (err.status === 400 && /think/i.test(err.message) && think !== undefined) {
           think = nextThink(think)
+          attempt--
+          continue
+        }
+        // Das Nachdenken hat Zeit oder Tokens aufgebraucht: einmal ohne Nachdenken wiederholen
+        if (think && (err.reason === 'thinking' || (err.reason === 'truncated' && err.thought))) {
+          opts.onWarning?.(`${err.message} Antwort wurde ohne Nachdenken erzeugt.`)
+          think = false
           attempt--
           continue
         }
@@ -338,6 +358,7 @@ export class OllamaClient implements LlmClient {
    * - bis zum ersten Token höchstens `timeout_ms` (Einlesen des Textes, ggf. Warten hinter anderen Anfragen)
    * - danach höchstens `idle_ms` ohne neues Token.
    * Langsame Modelle sind damit kein Problem, solange sie liefern.
+   * Nur das Nachdenken hat zusätzlich ein Gesamtlimit (`think_limit_min`); die Antwort selbst wird nie deswegen abgebrochen.
    */
   private async streamChat(
     body: any,
@@ -346,8 +367,11 @@ export class OllamaClient implements LlmClient {
     const ctrl = new AbortController()
     const onAbort = () => ctrl.abort()
     opts.signal?.addEventListener('abort', onAbort)
-    let reason: 'first' | 'idle' | null = null
+    let reason: 'first' | 'idle' | 'thinking' | null = null
     let timer: NodeJS.Timeout | undefined
+    let thinkTimer: NodeJS.Timeout | undefined
+    let thought = false
+    const thinkLimitMin = this.cfg.think_limit_min ?? 15
     const arm = (ms: number, r: 'first' | 'idle') => {
       clearTimeout(timer)
       timer = setTimeout(() => {
@@ -362,15 +386,23 @@ export class OllamaClient implements LlmClient {
     const handle = (obj: any) => {
       if (obj?.error) throw Object.assign(new Error(String(obj.error)), { status: 500 })
       // Nachdenken kommt getrennt vom Text – zählt als Lebenszeichen, gehört aber nicht zur Antwort
-      const thought: string = obj?.message?.thinking ?? obj?.thinking ?? ''
-      if (thought) {
+      const thoughtPiece: string = obj?.message?.thinking ?? obj?.thinking ?? ''
+      if (thoughtPiece) {
         tokens++
         opts.onToken?.(tokens)
-        opts.onThinking?.(thought)
+        opts.onThinking?.(thoughtPiece)
         arm(this.cfg.idle_ms, 'idle')
+        if (!thought && !content && thinkLimitMin > 0) {
+          thinkTimer = setTimeout(() => {
+            reason = 'thinking'
+            ctrl.abort()
+          }, thinkLimitMin * 60_000)
+        }
+        thought = true
       }
       const piece: string = obj?.message?.content ?? obj?.response ?? ''
       if (piece) {
+        clearTimeout(thinkTimer)
         content += piece
         tokens++
         opts.onToken?.(tokens)
@@ -406,11 +438,14 @@ export class OllamaClient implements LlmClient {
         }
       }
       if (buf.trim()) handle(JSON.parse(buf.trim()))
-      if (doneReason === 'length' && !opts.allowTruncated) {
-        throw Object.assign(new Error(`Die Antwort wurde nach ${tokens} Tokens abgeschnitten (Antwortgrenze erreicht).`), { reason: 'truncated' })
+      if (doneReason === 'length' && (!opts.allowTruncated || (thought && !content))) {
+        throw Object.assign(new Error(`Die Antwort wurde nach ${tokens} Tokens abgeschnitten (Antwortgrenze erreicht).`), { reason: 'truncated', thought })
       }
       return content
     } catch (e) {
+      if (reason === 'thinking') {
+        throw Object.assign(new Error(`Das Nachdenken wurde nach ${thinkLimitMin} min abgebrochen (Zeitlimit).`), { reason })
+      }
       if (reason === 'first') {
         throw Object.assign(new Error(`Das LLM hat innerhalb von ${Math.round(this.cfg.timeout_ms / 60000)} min nicht zu antworten begonnen (belegt oder zu langsam beim Einlesen).`), { reason })
       }
@@ -420,6 +455,7 @@ export class OllamaClient implements LlmClient {
       throw e
     } finally {
       clearTimeout(timer)
+      clearTimeout(thinkTimer)
       opts.signal?.removeEventListener('abort', onAbort)
     }
   }
@@ -427,7 +463,8 @@ export class OllamaClient implements LlmClient {
 
 interface LlmCallError extends Error {
   status?: number
-  reason?: 'first' | 'idle' | 'truncated'
+  thought?: boolean
+  reason?: 'first' | 'idle' | 'thinking' | 'truncated'
 }
 
 /** JSON aus einer Modellantwort lesen (verträgt ```json-Blöcke und Text drumherum). */

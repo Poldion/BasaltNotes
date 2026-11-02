@@ -766,7 +766,7 @@ interface LlmModel {
   loaded: boolean
 }
 
-type ThinkMode = 'off' | 'on' | 'low' | 'medium' | 'high'
+type ThinkMode = 'off' | 'on' | 'low' | 'medium' | 'high' | 'unlimited'
 
 const THINK_OPTIONS: [ThinkMode, string][] = [
   ['off', tr('Aus (schnell)')],
@@ -774,6 +774,7 @@ const THINK_OPTIONS: [ThinkMode, string][] = [
   ['low', tr('Niedrig')],
   ['medium', tr('Mittel')],
   ['high', tr('Hoch (langsam)')],
+  ['unlimited', tr('Unbegrenzt (nur Zeitlimit)')],
 ]
 
 interface LlmSettings {
@@ -782,6 +783,7 @@ interface LlmSettings {
   num_ctx: number | null
   think_chat: ThinkMode
   think_curator: ThinkMode
+  think_limit_min: number
   override: { url?: string; model?: string; num_ctx?: number } | null
   env: { url: string | null; model: string | null; num_ctx: number | null; think_chat: string | null; think_curator: string | null }
 }
@@ -796,6 +798,7 @@ export function LlmCard({ onSaved }: { onSaved: () => void }) {
   const [ctx, setCtx] = useState('')
   const [thinkChat, setThinkChat] = useState<ThinkMode>('off')
   const [thinkCurator, setThinkCurator] = useState<ThinkMode>('off')
+  const [thinkLimit, setThinkLimit] = useState('15')
   const [models, setModels] = useState<LlmModel[] | null>(null)
   const [testing, setTesting] = useState(false)
   const [testError, setTestError] = useState<string | null>(null)
@@ -808,6 +811,7 @@ export function LlmCard({ onSaved }: { onSaved: () => void }) {
     setCtx(c.num_ctx ? String(c.num_ctx) : '')
     setThinkChat(c.think_chat ?? 'off')
     setThinkCurator(c.think_curator ?? 'off')
+    setThinkLimit(String(c.think_limit_min ?? 15))
   }
 
   const test = async (u = url) => {
@@ -837,7 +841,7 @@ export function LlmCard({ onSaved }: { onSaved: () => void }) {
   const save = async () => {
     setSaving(true)
     try {
-      const r = await api<LlmSettings & { info: any }>('/system/llm', { method: 'PUT', body: { url: url.trim(), model: model || '', num_ctx: ctx ? Number(ctx) : 0, think_chat: thinkChat, think_curator: thinkCurator } })
+      const r = await api<LlmSettings & { info: any }>('/system/llm', { method: 'PUT', body: { url: url.trim(), model: model || '', num_ctx: ctx ? Number(ctx) : 0, think_chat: thinkChat, think_curator: thinkCurator, think_limit_min: Number(thinkLimit) || 0 } })
       apply(r)
       toast(r.info?.reachable ? tr('Gespeichert – {x} erreichbar', { x: r.info.model ?? tr('Modell') }) : tr('Gespeichert, aber der Server antwortet nicht'), r.info?.reachable ? 'success' : 'error')
       onSaved()
@@ -865,7 +869,8 @@ export function LlmCard({ onSaved }: { onSaved: () => void }) {
   const gb = (n: number | null) => (n ? `${(n / 1e9).toFixed(1)} GB` : '')
   const dirty = url.trim().replace(/\/+$/, '') !== cfg.url || (model || null) !== (cfg.model ?? null) || (ctx ? Number(ctx) : null) !== (cfg.num_ctx ?? null) ||
     thinkChat !== cfg.think_chat ||
-    thinkCurator !== cfg.think_curator
+    thinkCurator !== cfg.think_curator ||
+    (Number(thinkLimit) || 0) !== cfg.think_limit_min
   const modelKnown = !model || !models || models.some((m) => m.name === model)
 
   return (
@@ -929,6 +934,11 @@ export function LlmCard({ onSaved }: { onSaved: () => void }) {
               </select>
             </label>
           </div>
+          <label className="field">
+            <span className="small muted">{tr('Zeitlimit fürs Nachdenken in Minuten (0 = keins)')}</span>
+            <input className="input" style={{ maxWidth: 160 }} type="number" min={0} max={1440} value={thinkLimit} onChange={(e) => setThinkLimit(e.target.value)} />
+            <span className="small faint">{tr('Ist das Limit erreicht oder reichen die Tokens nicht, antwortet das Modell einmal ohne Nachdenken. Die Antwort selbst wird dadurch nicht abgebrochen.')}</span>
+          </label>
           <span className="small faint">
             {tr('Nur bei Modellen, die nachdenken können (z. B. qwen3, deepseek-r1, gpt-oss). Die Stufen Niedrig/Mittel/Hoch versteht nur gpt-oss, andere Modelle behandeln sie wie „An“. Kann ein Modell nicht nachdenken, wird es automatisch ausgeschaltet. Das Nachdenken erzeugt zusätzliche Tokens – bei langsamen Modellen dauert eine Antwort dann deutlich länger.')}
           </span>

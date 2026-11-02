@@ -4,6 +4,29 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.28.0] – 2026-11-02
+
+### Added
+
+- Thinking mode "Unlimited": no token limit for thinking, only a time limit. The limit can be set under Settings → LLM
+  or with `LLM_THINK_LIMIT_MIN` (default 15 minutes, 0 = none) and applies to all thinking modes. It never cuts off the
+  answer itself.
+
+### Changed
+
+- If thinking reaches the time limit or uses up the tokens, the model now answers once without thinking instead of the
+  run failing. The curator notes this as a warning in the run.
+- The curator now tells the model the required date format and today's date for appointments.
+
+### Fixed
+
+- Appointments created by the curator were missing from the calendar when the date was not in the exact format. Dates
+  like "Tue, 03.11.2026" or "3 November" written in German are now converted, a missing start is taken from the
+  appointment's text, and dated entries in a "## Termine" section of a source become appointments even if the model
+  skips them.
+- Appointments on different days could be merged into one because of similar or equal names, which would have changed
+  the date. They now stay separate notes.
+
 ## [0.27.1] – 2026-11-02
 
 ### Changed

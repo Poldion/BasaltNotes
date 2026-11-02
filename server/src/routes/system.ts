@@ -48,6 +48,7 @@ export const registerSystem: Register = (app: FastifyInstance, s: Services) => {
       num_ctx: s.config.llm.num_ctx ?? null,
       think_chat: s.config.llm.think_chat ?? 'off',
       think_curator: s.config.llm.think_curator ?? 'off',
+      think_limit_min: s.config.llm.think_limit_min ?? 15,
       /** In der Oberfläche gesetzte Werte (Vorrang vor Umgebungsvariablen) */
       override: file.llm_override ?? null,
       /** Werte aus der Compose-Datei bzw. den Umgebungsvariablen */
@@ -126,6 +127,7 @@ export const registerSystem: Register = (app: FastifyInstance, s: Services) => {
             num_ctx: { type: ['integer', 'null'], minimum: 0, maximum: 1048576 },
             think_chat: { type: 'string', enum: THINK_MODES },
             think_curator: { type: 'string', enum: THINK_MODES },
+            think_limit_min: { type: 'integer', minimum: 0, maximum: 1440 },
             reset: { type: 'boolean' },
           },
         },
@@ -144,6 +146,7 @@ export const registerSystem: Register = (app: FastifyInstance, s: Services) => {
         if (b.num_ctx !== undefined) next.num_ctx = Number(b.num_ctx) || 0
         if (b.think_chat !== undefined) next.think_chat = thinkMode(b.think_chat)
         if (b.think_curator !== undefined) next.think_curator = thinkMode(b.think_curator)
+        if (b.think_limit_min !== undefined) next.think_limit_min = b.think_limit_min
         updateFileConfig(s.config.dataDir, (doc) => doc.set('llm_override', next))
       }
       // Sofort übernehmen: der LLM-Client liest dieselbe Konfiguration
@@ -153,6 +156,7 @@ export const registerSystem: Register = (app: FastifyInstance, s: Services) => {
       s.config.llm.num_ctx = fresh.llm.num_ctx
       s.config.llm.think_chat = fresh.llm.think_chat
       s.config.llm.think_curator = fresh.llm.think_curator
+      s.config.llm.think_limit_min = fresh.llm.think_limit_min
       s.llm.reset?.()
       const info = await s.llm.info(true).catch((e) => ({ reachable: false, error: (e as Error).message }))
       return { ...llmSettings(), info }

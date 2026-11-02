@@ -57,6 +57,24 @@ beforeAll(async () => {
       send({ message: { content: '' }, done: true, done_reason: 'stop' })
       return res.end()
     }
+    if (mode === 'denkt-zu-viel') {
+      // Nur mit Nachdenken läuft die Antwortgrenze voll
+      if (lastBody.think === false) send({ message: { content: '{"ok": 2}' }, done: false })
+      else send({ message: { content: '', thinking: 'hm ' }, done: false })
+      send({ message: { content: '' }, done: true, done_reason: lastBody.think === false ? 'stop' : 'length' })
+      return res.end()
+    }
+    if (mode === 'denkt-ewig') {
+      if (lastBody.think === false) {
+        send({ message: { content: '{"ok": 3}' }, done: true, done_reason: 'stop' })
+        return res.end()
+      }
+      for (let i = 0; i < 100 && !res.destroyed; i++) {
+        send({ message: { content: '', thinking: 'hm ' }, done: false })
+        await sleep(20)
+      }
+      return res.end()
+    }
     if (mode === 'denkt-im-text') {
       for (const p of ['<thi', 'nk>Erst überlegen', ' …</think>', '\n\nDie ', 'Antwort.']) send({ message: { content: p }, done: false })
       send({ message: { content: '' }, done: true, done_reason: 'stop' })
@@ -170,8 +188,40 @@ describe('LLM-Client (Streaming)', () => {
 })
 
 describe('LLM-Client: Nachdenken (Thinking)', () => {
-  const thinking = (mode: 'off' | 'on' | 'low' | 'medium' | 'high', o: Partial<{ idle_ms: number }> = {}) =>
+  const thinking = (mode: 'off' | 'on' | 'low' | 'medium' | 'high' | 'unlimited', o: Partial<{ idle_ms: number; think_limit_min: number }> = {}) =>
     new OllamaClient({ url, timeout_ms: 500, idle_ms: 300, retries: 2, think_chat: mode, think_curator: mode, ...o })
+
+  it('Unbegrenzt: keine Tokengrenze, Nachdenken wird als true geschickt', async () => {
+    await thinking('unlimited').chatJson({ system: 's', user: 'x', reserveTokens: 1000 })
+    expect(lastBody.think).toBe(true)
+    expect(lastBody.options.num_predict).toBe(-1)
+  })
+
+  it('Grenze durch Nachdenken erreicht: einmal ohne Nachdenken wiederholen und im Protokoll vermerken', async () => {
+    const warnings: string[] = []
+    const before = chatCalls
+    const r = await thinking('low').chatJson({ system: 's', user: 'denkt-zu-viel', reserveTokens: 1000, onWarning: (w) => warnings.push(w) })
+    expect(r).toEqual({ ok: 2 })
+    expect(chatCalls - before).toBe(2)
+    expect(lastBody.options.num_predict).toBe(1000)
+    expect(warnings[0]).toMatch(/ohne Nachdenken/)
+    const t = await thinking('low').chatText({ system: 's', messages: [{ role: 'user', content: 'denkt-zu-viel' }] })
+    expect(t).toBe('{"ok": 2}')
+  })
+
+  it('Zeitlimit: Nachdenken wird abgebrochen, die Antwort kommt ohne Nachdenken', async () => {
+    const warnings: string[] = []
+    const r = await thinking('unlimited', { think_limit_min: 0.002 }).chatJson({ system: 's', user: 'denkt-ewig', onWarning: (w) => warnings.push(w) })
+    expect(r).toEqual({ ok: 3 })
+    expect(warnings[0]).toMatch(/Zeitlimit/)
+  })
+
+  it('Ohne Nachdenken bleibt eine abgeschnittene Antwort ein Fehler', async () => {
+    const before = chatCalls
+    const err: any = await thinking('off').chatJson({ system: 's', user: 'abgeschnitten' }).catch((e) => e)
+    expect(err.details.reason).toBe('truncated')
+    expect(chatCalls - before).toBe(1)
+  })
 
   it('schickt standardmäßig think: false und bei Stufen den Wert, mit mehr Antwort-Tokens', async () => {
     await client().chatJson({ system: 's', user: 'x', reserveTokens: 1000 })

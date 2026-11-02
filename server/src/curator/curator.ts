@@ -10,6 +10,7 @@ import { Search } from '../notes/search.js'
 import { stripLink, type Note, type Vault } from '../notes/vault.js'
 import type { VaultManager } from '../notes/vaults.js'
 import type { LlmClient } from './llm.js'
+import { eventsFromText, normalizeDateValue, parseDate } from './dates.js'
 import { findDuplicates } from './duplicates.js'
 import { profileOf } from '../notes/profiles.js'
 import { linkNoteBody } from './linker.js'
@@ -361,6 +362,9 @@ export class Curator {
       '- "facts": kurze Aussagen, was der Text über die Entität sagt (Aufgaben, Entscheidungen, Termine mit Datum).',
       '- "quests": offene Aufgaben/Vorhaben mit Status offen/erledigt. Erfinde nichts. "visibility" immer "players".',
       '- "relations": Beziehungen zwischen erkannten Personen, Projekten und Aufgaben (kind: member = arbeitet an/gehört zu, giver = Auftraggeber, other). "label" aus Sicht von "from", "inverse" aus Sicht von "to".',
+      ...(v.config.types.event
+        ? [`- Jeder konkrete Termin ist eine eigene Entität vom Typ event mit "properties.start" im Format JJJJ-MM-TT, mit Uhrzeit JJJJ-MM-TTTHH:mm. Heute ist der ${nowIso().slice(0, 10)}. Ohne erkennbares Datum keinen Termin anlegen.`]
+        : []),
       `Bekannte Namen: ${knownNames}`,
     ].join('\n')
   }
@@ -525,7 +529,7 @@ export class Curator {
       if (signal?.aborted) throw new CancelledError()
       onChunk?.(i + 1, chunks.length)
       try {
-        const raw = await this.llm.chatJson({ system, user: chunks[i], schema, temperature: 0.1, reserveTokens: 4096, signal, onToken })
+        const raw = await this.llm.chatJson({ system, user: chunks[i], schema, temperature: 0.1, reserveTokens: 4096, signal, onToken, onWarning: (w) => warnings.push(`Abschnitt ${i + 1}/${chunks.length}: ${w}`) })
         results.push(this.normalizeExtraction(raw, allowed))
       } catch (e) {
         if (isCancelled(e)) throw e
@@ -538,20 +542,53 @@ export class Curator {
     }
     if (!results.length)
       throw Object.assign(new ApiError('llm_unavailable', `Kein Abschnitt konnte ausgewertet werden. ${warnings[0] ?? ''}`, { reason: 'timeout' }), { noRetry: true })
-    return { extraction: this.mergeExtractions(results, profileOf(v)?.entityRank), chunks: chunks.length, model: info.model, context: info.context, warnings }
+    return { extraction: this.withCalendarDates(v, this.mergeExtractions(results, profileOf(v)?.entityRank), text), chunks: chunks.length, model: info.model, context: info.context, warnings }
+  }
+
+  /**
+   * Der Kalender braucht ein Datum im festen Format. Das LLM liefert es nicht verlässlich:
+   * Datumsfelder vereinheitlichen, fehlenden Beginn aus dem Text der Entität holen und
+   * Termine aus einem Abschnitt „## Termine“ der Quelle ergänzen, die das LLM ausgelassen hat.
+   */
+  private withCalendarDates(v: Vault, ex: Extraction, text: string): Extraction {
+    for (const e of ex.entities) {
+      for (const p of v.typeDef(e.type).properties ?? []) {
+        if ((p.type !== 'date' && p.type !== 'datetime') || !e.properties[p.name]) continue
+        e.properties[p.name] = normalizeDateValue(e.properties[p.name], p.type)
+      }
+      if (e.type === 'event' && !e.properties.start) {
+        const p = [e.name, e.summary, ...e.facts].map((s) => parseDate(s)).find(Boolean)
+        if (p) e.properties.start = p.time ? `${p.date}T${p.time}` : p.date
+      }
+    }
+    const start = (v.config.types.event ? v.typeDef('event').properties ?? [] : []).some((p) => p.name === 'start')
+    if (!start || !this.entityTypes(v).includes('event')) return ex
+    for (const t of eventsFromText(text)) {
+      const day = t.start.slice(0, 10)
+      if (ex.entities.some((e) => e.type === 'event' && String(e.properties.start ?? '').startsWith(day))) continue
+      ex.entities.push({ name: t.title, type: 'event', mentioned_as: [], summary: t.line, facts: [], dm_facts: [], properties: { start: t.start }, visibility: 'players', confidence: 0.9, rooms: [] })
+    }
+    return ex
   }
 
   // ============================================================ 2. Abgleichen
 
   async resolveEntity(v: Vault, e: ExEntity, campaign: string | null | undefined, signal?: AbortSignal): Promise<Resolution> {
     const variants = uniq([e.name, ...e.mentioned_as], norm)
+    // Termine an verschiedenen Tagen sind verschiedene Termine, auch bei gleichem oder ähnlichem Namen
+    const day = e.type === 'event' ? String(e.properties.start ?? '').slice(0, 10) : ''
+    const otherDay = (n: Note | null | undefined) => {
+      if (!day || !n || n.type !== 'event') return false
+      const cur = stripLink(n.frontmatter.start)
+      return !!cur && String(cur).slice(0, 10) !== day
+    }
     // 1. exakter Treffer (Titel/Alias, gleiche Kampagne, gleicher Typ – notfalls typunabhängig)
     for (const opt of [{ type: e.type }, {}] as { type?: string }[]) {
       for (const n of variants) {
         const id = v.resolveName(n, { ...opt, campaign: campaign ?? null })
         if (id) {
           const note = v.readNote(id)
-          if (!note) continue
+          if (!note || otherDay(note)) continue
           if (!opt.type && NON_ENTITY_TYPES.has(note.type)) continue
           if (campaign && note.campaign && norm(note.campaign) !== norm(campaign)) continue
           const res: Resolution = { name: e.name, type: note.type, match: id, title: note.title, confidence: 1, method: 'exact', candidates: [{ id, title: note.title, score: 1 }] }
@@ -563,7 +600,7 @@ export class Curator {
       }
     }
     // 2. Kandidaten über Ähnlichkeit + Volltext
-    const cands = this.candidates(v, variants, e.type, campaign).slice(0, 3)
+    const cands = this.candidates(v, variants, e.type, campaign).filter((c) => !otherDay(v.readNote(c.id))).slice(0, 3)
     if (!cands.length || cands[0].score < 0.6) return { name: e.name, type: e.type, match: 'new', confidence: e.confidence, method: 'new', candidates: cands }
     const [top, second] = cands
     if (top.score >= 0.92 && (!second || second.score < top.score - 0.1)) {
@@ -1105,13 +1142,22 @@ export class Curator {
   async apply(v: Vault, op: Operation, wo: { silent: boolean; commitMessage?: string }): Promise<{ created?: string; updated?: string; skipped?: string }> {
     switch (op.op) {
       case 'create_entity': {
-        const existing = v.resolveName(op.title!, { type: op.type, campaign: op.campaign ?? null }) ?? v.resolveName(op.title!, { type: op.type })
+        const find = (t: string) => v.resolveName(t, { type: op.type, campaign: op.campaign ?? null }) ?? v.resolveName(t, { type: op.type })
+        let title = op.title!
+        let existing = find(title)
+        // Gleichnamiger Termin an einem anderen Tag: eigene Notiz, Titel mit Datum bleibt eindeutig
+        const day = op.type === 'event' ? String(op.frontmatter?.start ?? '').slice(0, 10) : ''
+        const curStart = existing && day ? stripLink(v.readNote(existing)?.frontmatter.start) : null
+        if (curStart && String(curStart).slice(0, 10) !== day) {
+          title = `${title} (${day})`
+          existing = find(title)
+        }
         if (existing) {
           if (op.block) await v.putBlock(existing, op.block, wo)
           for (const b of op.extra_blocks ?? []) await v.putBlock(existing, b, wo)
           return { updated: existing }
         }
-        const note = await v.createNote({ type: op.type, title: op.title!, frontmatter: op.frontmatter }, wo)
+        const note = await v.createNote({ type: op.type, title, frontmatter: op.frontmatter }, wo)
         if (op.block) await v.putBlock(note.id, op.block, wo)
         for (const b of op.extra_blocks ?? []) await v.putBlock(note.id, b, wo)
         return { created: note.id }

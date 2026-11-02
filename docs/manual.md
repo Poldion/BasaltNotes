@@ -93,7 +93,8 @@ Environment variables take precedence over `/data/config.yaml`.
 | `LLM_NUM_CTX` | – | empty = automatic: `/api/ps` → proxy `/admin/state` (`forced_options.num_ctx`) → 4096 |
 | `LLM_TIMEOUT_MS` | `600000` | Maximum wait for the **first** token (reading the prompt, possibly waiting behind other requests) |
 | `LLM_IDLE_TIMEOUT_MS` | `120000` | Maximum time **without a new token**. Responses are streamed – slow models may write as long as they keep delivering |
-| `LLM_THINK_CHAT` / `LLM_THINK_CURATOR` | `off` | Thinking in chat or for the curator: `off`, `on`, `low`, `medium`, `high` (levels only for gpt-oss, otherwise like `on`). Models without thinking fall back to off automatically |
+| `LLM_THINK_CHAT` / `LLM_THINK_CURATOR` | `off` | Thinking in chat or for the curator: `off`, `on`, `low`, `medium`, `high` (levels only for gpt-oss, otherwise like `on`), `unlimited` (no token limit). Models without thinking fall back to off automatically |
+| `LLM_THINK_LIMIT_MIN` | `15` | Time limit for thinking in minutes, `0` = none. If it is reached or the tokens run out, the model answers once without thinking |
 | `LLM_CHAT_CONTEXT_CHARS` | `6000` | At most this many characters of notes go to the LLM per chat question (also limited by the model's context). Smaller = faster |
 | `CORS_ORIGINS` | – | Comma-separated origins that may access the API from a browser (e.g. the DM panel) |
 | `EMBED_ORIGINS` | = `CORS_ORIGINS` | Origins that may embed BasaltNotes as an iframe |
@@ -542,7 +543,7 @@ also has other scopes or grants. Deleting the vault ends the ownership.
 | PUT | `/system/features` | admin | Switch features `{curator?, chat?, setup_done?}` – applies immediately. When off, curator endpoints (proposals, runs, curator status, curate note) or chat endpoints answer with 403; the inbox keeps accepting and just stores |
 | GET | `/system/llm` | admin | LLM settings `{url, model, num_ctx, override, env}` |
 | GET | `/system/llm/models` | admin | Installed models of a server (`?url=` to test before saving) → `{models: [{name, parameter_size, quantization, size, loaded}]}` |
-| PUT | `/system/llm` | admin | Save `{url?, model?, num_ctx?, think_chat?, think_curator?}` (applies immediately, takes precedence over environment variables); `{"reset": true}` removes your own values |
+| PUT | `/system/llm` | admin | Save `{url?, model?, num_ctx?, think_chat?, think_curator?, think_limit_min?}` (applies immediately, takes precedence over environment variables); `{"reset": true}` removes your own values |
 | POST | `/auth/login` | – | `{username, password}` → sets a cookie, returns `{user, csrf, expires}` |
 | POST | `/auth/logout` | signed in | Sign out |
 | GET | `/auth/me` | signed in | `{kind, name, user_id, display_name, role, vaults, scopes, visibility, campaign, csrf, embed_origins, roles, features}` |

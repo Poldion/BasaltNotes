@@ -19,6 +19,8 @@ export interface LlmConfig {
   /** Nachdenken im Chat bzw. beim Kurator (Standard: aus) */
   think_chat?: ThinkMode
   think_curator?: ThinkMode
+  /** Höchstens so viele Minuten nachdenken, dann Antwort ohne Nachdenken; 0 = kein Limit (Standard: 15) */
+  think_limit_min?: number
 }
 
 export interface AppConfig {
@@ -65,6 +67,7 @@ export interface LlmOverride {
   num_ctx?: number
   think_chat?: ThinkMode
   think_curator?: ThinkMode
+  think_limit_min?: number
 }
 
 function list(value: string | undefined): string[] | undefined {
@@ -75,7 +78,7 @@ function list(value: string | undefined): string[] | undefined {
 export function thinkMode(value: unknown): ThinkMode {
   const v = String(value ?? '').trim().toLowerCase()
   if (v === 'true' || v === 'on' || v === 'an') return 'on'
-  return v === 'low' || v === 'medium' || v === 'high' ? v : 'off'
+  return v === 'low' || v === 'medium' || v === 'high' || v === 'unlimited' ? v : 'off'
 }
 
 function num(value: string | undefined): number | undefined {
@@ -125,6 +128,7 @@ export function loadConfig(overrides: Partial<AppConfig> = {}): AppConfig {
       chat_context_chars: num(env.LLM_CHAT_CONTEXT_CHARS) ?? file.llm?.chat_context_chars ?? 6000,
       think_chat: thinkMode(file.llm_override?.think_chat ?? env.LLM_THINK_CHAT ?? file.llm?.think_chat),
       think_curator: thinkMode(file.llm_override?.think_curator ?? env.LLM_THINK_CURATOR ?? file.llm?.think_curator),
+      think_limit_min: file.llm_override?.think_limit_min ?? num(env.LLM_THINK_LIMIT_MIN) ?? file.llm?.think_limit_min ?? 15,
     },
     corsOrigins: list(env.CORS_ORIGINS) ?? file.cors_origins ?? [],
     embedOrigins: list(env.EMBED_ORIGINS) ?? file.embed_origins ?? list(env.CORS_ORIGINS) ?? file.cors_origins ?? [],
