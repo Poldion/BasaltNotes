@@ -55,6 +55,12 @@ Beim ersten Anmelden lassen sich die KI-Funktionen einschalten und ein Beispiel-
 
 Die Sprache der Oberfläche richtet sich nach dem Browser; umschalten mit dem Knopf **DE/EN** unten in der Seitenleiste.
 
+### Android-App
+
+`BasaltNotes-x.y.z.apk` von der [Release-Seite](https://github.com/Poldion/BasaltNotes/releases/latest) laden, auf dem Handy
+installieren und die Adresse deines Servers eingeben. Neue Versionen bietet die App danach selbst an.
+Mehr dazu im [Handbuch](docs/handbuch.md#android-app).
+
 ## Konfiguration
 
 | Variable | Standard | Bedeutung |

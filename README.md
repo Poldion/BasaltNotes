@@ -54,6 +54,12 @@ The first sign-in offers to switch on the AI features and to create an example v
 
 The interface language follows your browser; switch it with the **EN/DE** button at the bottom of the sidebar.
 
+### Android app
+
+Download `BasaltNotes-x.y.z.apk` from the [releases page](https://github.com/Poldion/BasaltNotes/releases/latest), install
+it on your phone and enter the address of your server. The app then offers new versions by itself.
+Details are in the [manual](docs/manual.md#android-app).
+
 ## Configuration
 
 | Variable | Default | Meaning |

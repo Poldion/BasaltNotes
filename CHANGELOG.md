@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.27.1] – 2026-11-02
+
+### Changed
+
+- README: the quick start now explains where to download the Android app.
+
 ## [0.27.0] – 2026-11-02
 
 ### Added
