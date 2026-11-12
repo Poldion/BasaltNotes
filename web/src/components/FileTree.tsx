@@ -201,14 +201,17 @@ export function FileTree({ vault, onNewNote }: { vault: string; onNewNote: (fold
           return (
             <div key={sub.path} role="treeitem" aria-expanded={isOpen}>
               <div
-                className={`tree-row ${dropTarget === sub.path ? 'drop' : ''}`}
-                style={{ paddingLeft: 6 + depth * 14 }}
+                className={`tree-row tree-folder ${dropTarget === sub.path ? 'drop' : ''}`}
+                style={{ paddingLeft: 6 + depth * 16 }}
                 onClick={() => toggle(sub.path)}
                 tabIndex={0}
                 onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), toggle(sub.path))}
                 {...dropProps(sub.path)}
               >
                 <span className="tree-caret">{<Icon name={isOpen ? 'chevronDown' : 'chevronRight'} size={12} />}</span>
+                <span className="tree-folder-icon">
+                  <Icon name={isOpen ? 'folderOpen' : 'folder'} size={15} />
+                </span>
                 <span className="label">{sub.name}</span>
                 {canWrite && moreButton(sub.path)}
                 {canWrite && (
@@ -237,7 +240,7 @@ export function FileTree({ vault, onNewNote }: { vault: string; onNewNote: (fold
             key={n.id}
             to={`/${vault}/note/${enc(n.id)}`}
             className={`tree-row ${n.id === activeId ? 'active' : ''}`}
-            style={{ paddingLeft: 20 + depth * 14 }}
+            style={{ paddingLeft: 24 + depth * 16 }}
             draggable={canWrite}
             onDragStart={(e) => e.dataTransfer.setData('application/x-basalt-note', n.id)}
             role="treeitem"

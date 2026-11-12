@@ -865,5 +865,7 @@
   "Nach Updates suchen": "Check for updates",
   "Unbegrenzt (nur Zeitlimit)": "Unlimited (time limit only)",
   "Zeitlimit fürs Nachdenken in Minuten (0 = keins)": "Time limit for thinking in minutes (0 = none)",
-  "Ist das Limit erreicht oder reichen die Tokens nicht, antwortet das Modell einmal ohne Nachdenken. Die Antwort selbst wird dadurch nicht abgebrochen.": "If the limit is reached or the tokens run out, the model answers once without thinking. The answer itself is not cut off by this."
+  "Ist das Limit erreicht oder reichen die Tokens nicht, antwortet das Modell einmal ohne Nachdenken. Die Antwort selbst wird dadurch nicht abgebrochen.": "If the limit is reached or the tokens run out, the model answers once without thinking. The answer itself is not cut off by this.",
+  "Seitenleiste": "Sidebar",
+  "Menü": "Menu"
 }

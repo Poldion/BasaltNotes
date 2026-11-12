@@ -261,6 +261,9 @@ kbd {
 .overlay {
   display: none;
 }
+.sidebar-tabs {
+  display: none;
+}
 
 @media (max-width: 900px) {
   .app {
@@ -277,6 +280,51 @@ kbd {
   }
   .sidebar.open {
     transform: none;
+  }
+  .sidebar {
+    width: min(92vw, 380px);
+  }
+  /* Reiter: Dateien oder Menü, der Dateibaum bekommt die ganze Höhe */
+  .sidebar-tabs {
+    display: flex;
+    gap: 4px;
+    margin: 4px 8px 6px;
+    padding: 3px;
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+  }
+  .sidebar-tabs button {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 38px;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .sidebar-tabs button.active {
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+  }
+  /* Im Menü füllt die Navigation die Höhe, die Fußleiste bleibt unten */
+  .sidebar.pane-nav .sidebar-section.nav-part {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+  }
+  .sidebar.pane-files .nav-part,
+  .sidebar.pane-nav .files-part {
+    display: none;
+  }
+  .sidebar .tree {
+    font-size: 15px;
   }
   .overlay.open {
     display: block;
@@ -644,6 +692,14 @@ table.table {
 .tree-row.drop {
   outline: 2px dashed var(--accent);
 }
+.tree-folder {
+  font-weight: 600;
+}
+.tree-folder-icon {
+  display: inline-flex;
+  flex: none;
+  color: var(--accent);
+}
 .tree-row .label {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -668,6 +724,10 @@ table.table {
   .tree-row:hover .actions,
   .tree-row:focus-within .actions {
     display: none;
+  }
+  /* Touch löst :hover aus und lässt es stehen */
+  .tree-row:hover:not(.active) {
+    background: transparent;
   }
   .tree-row .actions.open {
     display: flex;

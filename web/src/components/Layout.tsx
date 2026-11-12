@@ -15,6 +15,22 @@ export function Layout() {
   const { vaults, refreshVaults, theme, setTheme, setMe, isAdmin, isPlayer, me, canWrite, toast, features, isAreaLimited } = useApp()
   const [open, setOpen] = useState(false)
   const [switcher, setSwitcher] = useState(false)
+  /** Handy: Seitenleiste zeigt entweder Dateien oder Menü, damit der Dateibaum die ganze Höhe hat */
+  const [pane, setPane] = useState<'files' | 'nav'>(() => {
+    try {
+      return localStorage.getItem('basalt:sidebar-pane') === 'nav' ? 'nav' : 'files'
+    } catch {
+      return 'files'
+    }
+  })
+  const choosePane = (p: 'files' | 'nav') => {
+    setPane(p)
+    try {
+      localStorage.setItem('basalt:sidebar-pane', p)
+    } catch {
+      // ignorieren
+    }
+  }
   const [newNote, setNewNote] = useState<{ folder?: string } | null>(null)
   const navigate = useNavigate()
   const location = useLocation()
@@ -73,7 +89,7 @@ export function Layout() {
   return (
     <div className="app">
       <div className={`overlay ${open ? 'open' : ''}`} onClick={() => setOpen(false)} />
-      <aside className={`sidebar ${open ? 'open' : ''}`} aria-label={tr('Navigation')}>
+      <aside className={`sidebar ${open ? 'open' : ''} pane-${pane}`} aria-label={tr('Navigation')}>
         <Link className="brand" to="/" title={tr('Übersicht')}>
           <img src="/icon.svg" alt="" />
           <span>BasaltNotes</span>
@@ -99,7 +115,15 @@ export function Layout() {
         </div>
         {vault && (
           <>
-            <div className="sidebar-section">
+            <div className="sidebar-tabs" role="tablist" aria-label={tr('Seitenleiste')}>
+              <button role="tab" aria-selected={pane === 'files'} className={pane === 'files' ? 'active' : ''} onClick={() => choosePane('files')}>
+                <Icon name="folder" /> {tr('Dateien')}
+              </button>
+              <button role="tab" aria-selected={pane === 'nav'} className={pane === 'nav' ? 'active' : ''} onClick={() => choosePane('nav')}>
+                <Icon name="menu" /> {tr('Menü')}
+              </button>
+            </div>
+            <div className="sidebar-section nav-part">
               <button className="nav-link btn ghost" style={{ width: '100%', justifyContent: 'flex-start' }} onClick={() => setSwitcher(true)}>
                 <span className="nav-icon"><Icon name="switcher" /></span> {tr('Schnellöffner')}{' '}<kbd style={{ marginLeft: 'auto', fontSize: 11 }}>{tr('Strg O')}</kbd>
               </button>
@@ -145,8 +169,12 @@ export function Layout() {
                 <span className="nav-icon"><Icon name="graph" /></span> {tr('Graph')}
               </NavLink>
             </div>
-            {features.curator && <CuratorIndicator vault={vault} />}
-            <div className="row" style={{ padding: '10px 16px 2px' }}>
+            {features.curator && (
+              <div className="nav-part">
+                <CuratorIndicator vault={vault} />
+              </div>
+            )}
+            <div className="row files-part" style={{ padding: '10px 16px 2px' }}>
               <span className="small muted grow" style={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', fontSize: 11 }}>
                 {tr('Dateien')}
               </span>
@@ -156,7 +184,7 @@ export function Layout() {
                 </button>
               )}
             </div>
-            <div className="sidebar-scroll">
+            <div className="sidebar-scroll files-part">
               <FileTree vault={vault} onNewNote={(folder) => setNewNote({ folder })} />
             </div>
           </>

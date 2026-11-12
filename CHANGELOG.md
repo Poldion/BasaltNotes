@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.28.1] – 2026-11-12
+
+### Changed
+
+- Phone: the sidebar has two tabs, Files and Menu, so the file tree gets the full height. Folders have a folder icon
+  and bold names, nested folders are indented more clearly.
+
+### Fixed
+
+- Phone: the footer stays at the bottom of the menu, and a tapped tree row no longer stays highlighted.
+
 ## [0.28.0] – 2026-11-02
 
 ### Added
